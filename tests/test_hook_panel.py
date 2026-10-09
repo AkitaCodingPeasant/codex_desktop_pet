@@ -3,20 +3,40 @@ from __future__ import annotations
 import os
 import socket
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtGui import QPixmap
 
 import desktop_pet.hook_bridge as bridge
 import desktop_pet.hook_listener as listener_module
 from desktop_pet.config import load_spritesheet_config
 from desktop_pet.desktop_pet import DesktopPet
 from desktop_pet.hook_listener import HookListener
+from desktop_pet.settings_panel import SettingsPanel
 
 
 class HookPanelTests(unittest.TestCase):
+    def test_hook_settings_button_installs_and_reports_result(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        with patch("desktop_pet.settings_panel.install_hooks", return_value=(
+            Path("D:/codex/hooks.json"), True,
+        )) as install:
+            panel = SettingsPanel(100, 8, QPixmap(16, 16))
+            try:
+                panel.hook_settings_button.click()
+                self.assertEqual(panel.pages.currentIndex(), 2)
+                panel.install_hook_button.click()
+                install.assert_called_once_with()
+                self.assertIn("Hook 已設定／更新", panel.hook_install_result.text())
+                self.assertIn("/hooks", panel.hook_install_result.text())
+            finally:
+                panel.close()
+        self.assertIsNotNone(app)
+
     def test_change_summary_button_shows_below_reply(self) -> None:
         app = QApplication.instance() or QApplication([])
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as temporary:

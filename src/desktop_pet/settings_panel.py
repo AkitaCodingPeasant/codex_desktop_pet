@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from desktop_pet.hook_install import install_hooks
+
 
 class SettingsPanel(QDialog):
     scale_changed = Signal(int)
@@ -55,7 +57,8 @@ class SettingsPanel(QDialog):
         navigation.addSpacing(18)
         self.settings_button = QPushButton("設定")
         self.hook_button = QPushButton("Hook 測試")
-        for button in (self.settings_button, self.hook_button):
+        self.hook_settings_button = QPushButton("Hook 設定")
+        for button in (self.settings_button, self.hook_button, self.hook_settings_button):
             button.setObjectName("navigationButton")
             button.setCheckable(True)
             navigation.addWidget(button)
@@ -66,6 +69,7 @@ class SettingsPanel(QDialog):
         shell.addWidget(self.pages, 1)
         self.settings_button.clicked.connect(lambda: self._show_page(0))
         self.hook_button.clicked.connect(lambda: self._show_page(1))
+        self.hook_settings_button.clicked.connect(lambda: self._show_page(2))
 
         settings_page = QWidget()
         root = QVBoxLayout(settings_page)
@@ -203,6 +207,31 @@ class SettingsPanel(QDialog):
         hook_close.clicked.connect(self.close)
         hook_layout.addWidget(hook_close)
         self.pages.addWidget(hook_page)
+
+        hook_settings_page = QWidget()
+        hook_settings_layout = QVBoxLayout(hook_settings_page)
+        hook_settings_layout.setContentsMargins(28, 26, 28, 24)
+        hook_settings_layout.setSpacing(16)
+        hook_settings_eyebrow = QLabel("DESKTOP PET  /  HOOK SETUP")
+        hook_settings_eyebrow.setObjectName("eyebrow")
+        hook_settings_layout.addWidget(hook_settings_eyebrow)
+        hook_settings_title = QLabel("Hook 設定")
+        hook_settings_title.setObjectName("title")
+        hook_settings_layout.addWidget(hook_settings_title)
+        hook_settings_hint = QLabel("將桌寵 Hook 加入目前使用者的 Codex 設定。")
+        hook_settings_hint.setObjectName("subtitle")
+        hook_settings_hint.setWordWrap(True)
+        hook_settings_layout.addWidget(hook_settings_hint)
+        self.install_hook_button = QPushButton("設定／更新 Hook")
+        self.install_hook_button.setObjectName("eventButton")
+        self.install_hook_button.clicked.connect(self._install_hooks)
+        hook_settings_layout.addWidget(self.install_hook_button)
+        self.hook_install_result = QLabel("")
+        self.hook_install_result.setObjectName("note")
+        self.hook_install_result.setWordWrap(True)
+        hook_settings_layout.addWidget(self.hook_install_result)
+        hook_settings_layout.addStretch()
+        self.pages.addWidget(hook_settings_page)
         self._show_page(0)
 
         self.setStyleSheet("""
@@ -272,6 +301,18 @@ class SettingsPanel(QDialog):
         self.pages.setCurrentIndex(index)
         self.settings_button.setChecked(index == 0)
         self.hook_button.setChecked(index == 1)
+        self.hook_settings_button.setChecked(index == 2)
+
+    def _install_hooks(self) -> None:
+        try:
+            target, changed = install_hooks()
+        except (OSError, ValueError) as error:
+            self.hook_install_result.setText(f"設定失敗：{error}")
+            return
+        result = "Hook 已設定／更新。" if changed else "Hook 已是最新設定。"
+        self.hook_install_result.setText(
+            f"{result}\n位置：{target}\n請到 Codex 輸入 /hooks，審閱並信任新增的 Hook。"
+        )
 
     def _send_test_event(self, event_name: str, message_override: str | None = None) -> None:
         if event_name == "turn.started" or (

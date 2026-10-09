@@ -21,19 +21,19 @@ uv run desktop-pet
 | 雙擊桌寵 | 開啟設定面板 |
 | 在桌寵上按右鍵 | 開啟退出選單 |
 
-設定面板可切換「設定」與「Hook 測試」。設定頁可即時調整角色大小（50–200%）與動畫速度（4–60 FPS），也可按「停止運行」結束程式。設定會保留到下次啟動；關閉面板只會收起面板，桌寵會繼續運行。
+設定面板可切換「設定」、「Hook 測試」與「Hook 設定」。設定頁可即時調整角色大小（50–200%）與動畫速度（4–60 FPS），也可按「停止運行」結束程式。設定會保留到下次啟動；關閉面板只會收起面板，桌寵會繼續運行。
 
 面板會顯示目前狀態與執行中的 Codex 工作數。工作數以桌寵啟動後收到的回合事件統計；同一回合的多次工具事件仍只算一個工作。Hook 測試頁可模擬回合開始、工具執行、等待授權、完成、失敗、中斷與工作階段結束，也可輸入測試回覆。測試事件會透過本機 UDP 傳給執行中的桌寵。
 
 ## 連接 Codex hook
 
-桌寵在 `127.0.0.1:49377` 接收 UDP 事件。`codex_hooks.template.json` 是安裝範本，其中的 Python 與 `hook_bridge.py` 路徑固定指向 `D:\desktop_pet_v2`；若專案位置不同，請先調整範本。啟動桌寵後，在專案根目錄執行：
+桌寵在 `127.0.0.1:49377` 接收 UDP 事件。啟動桌寵後，在設定面板的「Hook 設定」頁按「設定／更新 Hook」。程式會自動使用目前的 Python 與 `hook_bridge.py` 路徑，不需要手動編輯路徑。也可以在專案根目錄執行：
 
 ```powershell
 uv run python install_codex_hooks.py
 ```
 
-安裝腳本會將範本合併至 `~/.codex/hooks.json`。若原檔存在且需要修改，會先備份為同目錄下的 `hooks.json.bak.desktop_pet_v2`。安裝後，請在 Codex 的 `/hooks` 審閱並信任新增的 hook。
+按鈕與安裝腳本會將桌寵 Hook 合併至 `~/.codex/hooks.json`（若設定 `CODEX_HOME`，則使用該目錄）。更新時會保留其他 Hook；若原檔存在且需要修改，會先備份為同目錄下的 `hooks.json.bak.desktop_pet_v2`。安裝後，請在 Codex 的 `/hooks` 審閱並信任新增或更新的 Hook。
 
 | Codex 事件 | 桌寵反應 |
 | --- | --- |
@@ -76,5 +76,5 @@ uv run python src/desktop_pet/hook_bridge.py --event turn.failed
 - `src/desktop_pet/desktop_pet.py`、`settings_panel.py`：桌寵動畫、互動與設定面板。
 - `src/desktop_pet/hook_bridge.py`、`hook_listener.py`：Codex 事件轉換與 UDP 接收。
 - `src/desktop_pet/config.py`、`assets/`：動畫設定與圖片素材。
-- `codex_hooks.template.json`、`install_codex_hooks.py`：hook 範本與安裝腳本。
+- `src/desktop_pet/hook_install.py`、`install_codex_hooks.py`：Hook 設定邏輯與命令列入口。
 - `tests/`：自動化測試。
