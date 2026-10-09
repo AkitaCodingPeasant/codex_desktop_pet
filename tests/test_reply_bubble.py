@@ -7,6 +7,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from desktop_pet.config import load_spritesheet_config
@@ -27,7 +28,7 @@ def play_result_to_end(pet: DesktopPet, event_name: str) -> None:
 
 
 class ReplyBubbleTests(unittest.TestCase):
-    def test_working_intro_then_repeat_until_tool_finishes(self) -> None:
+    def test_working_intro_then_repeat_until_minimum_time_elapses(self) -> None:
         app = QApplication.instance() or QApplication([])
         with patch("desktop_pet.desktop_pet.keep_topmost"):
             pet = DesktopPet(load_spritesheet_config())
@@ -47,6 +48,9 @@ class ReplyBubbleTests(unittest.TestCase):
                 self.assertEqual((pet.state, pet.animation_name, pet.frame_index),
                                  ("working", "working_repeat", 0))
                 pet.handle_event("turn.in_progress", session_id="session-a", turn_id="turn-a")
+                self.assertEqual((pet.state, pet.animation_name), ("working", "working_repeat"))
+                pet.working_timer.stop()
+                pet._finish_working_window()
                 self.assertEqual((pet.state, pet.animation_name), ("thinking", "thinking_1_1"))
             finally:
                 pet.close()
@@ -70,7 +74,65 @@ class ReplyBubbleTests(unittest.TestCase):
                 pet.handle_event("user_input_completed", session_id="session-a", turn_id="turn-a")
                 self.assertEqual(pet.state, "working")
                 pet.handle_event("turn.in_progress", session_id="session-b", turn_id="turn-b")
+                self.assertEqual(pet.state, "working")
+                pet.working_timer.stop()
+                pet._finish_working_window()
                 self.assertEqual(pet.state, "thinking")
+            finally:
+                pet.close()
+        self.assertIsNotNone(app)
+
+    def test_next_tool_resets_minimum_time_without_restarting_animation(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        with patch("desktop_pet.desktop_pet.keep_topmost"):
+            pet = DesktopPet(load_spritesheet_config())
+            try:
+                pet.handle_event("turn.started", session_id="session-a", turn_id="turn-a")
+                pet.handle_event("tool.started", session_id="session-a", turn_id="turn-a")
+                pet.handle_event("turn.in_progress", session_id="session-a", turn_id="turn-a")
+                self.assertEqual(pet.state, "working")
+                QTest.qWait(100)
+                remaining_before = pet.working_timer.remainingTime()
+                pet.handle_event("tool.started", session_id="session-a", turn_id="turn-a")
+                self.assertEqual((pet.state, pet.animation_name), ("working", "working_intro"))
+                self.assertGreater(pet.working_timer.remainingTime(), remaining_before)
+                pet.handle_event("turn.in_progress", session_id="session-a", turn_id="turn-a")
+                self.assertEqual(pet.state, "working")
+                QTest.qWait(1550)
+                self.assertEqual(pet.state, "working")
+                QTest.qWait(550)
+                self.assertEqual(pet.state, "thinking")
+            finally:
+                pet.close()
+        self.assertIsNotNone(app)
+
+    def test_long_running_tool_keeps_working_after_minimum_time(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        with patch("desktop_pet.desktop_pet.keep_topmost"):
+            pet = DesktopPet(load_spritesheet_config())
+            try:
+                pet.handle_event("turn.started", session_id="session-a", turn_id="turn-a")
+                pet.handle_event("tool.started", session_id="session-a", turn_id="turn-a")
+                pet.working_timer.stop()
+                pet._finish_working_window()
+                self.assertEqual(pet.state, "working")
+                pet.handle_event("turn.in_progress", session_id="session-a", turn_id="turn-a")
+                self.assertEqual(pet.state, "thinking")
+            finally:
+                pet.close()
+        self.assertIsNotNone(app)
+
+    def test_result_preempts_tool_minimum_time(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        with patch("desktop_pet.desktop_pet.keep_topmost"):
+            pet = DesktopPet(load_spritesheet_config())
+            try:
+                pet.handle_event("turn.started", session_id="session-a", turn_id="turn-a")
+                pet.handle_event("tool.started", session_id="session-a", turn_id="turn-a")
+                pet.handle_event("turn.in_progress", session_id="session-a", turn_id="turn-a")
+                pet.handle_event("turn.completed", session_id="session-a", turn_id="turn-a")
+                self.assertEqual((pet.state, pet.animation_name), ("result", "success_intro"))
+                self.assertFalse(pet.working_timer.isActive())
             finally:
                 pet.close()
         self.assertIsNotNone(app)
@@ -292,6 +354,20 @@ class ReplyBubbleTests(unittest.TestCase):
                 pet.handle_event("session.ended", session_id="session-a")
                 self.assertEqual(pet.active_turns, {})
                 self.assertEqual(pet.state, "idle")
+            finally:
+                pet.close()
+        self.assertIsNotNone(app)
+
+    def test_session_end_clears_tool_minimum_time(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        with patch("desktop_pet.desktop_pet.keep_topmost"):
+            pet = DesktopPet(load_spritesheet_config())
+            try:
+                pet.handle_event("turn.started", session_id="session-a", turn_id="turn-a")
+                pet.handle_event("tool.started", session_id="session-a", turn_id="turn-a")
+                pet.handle_event("session.ended", session_id="session-a")
+                self.assertEqual(pet.state, "idle")
+                self.assertFalse(pet.working_timer.isActive())
             finally:
                 pet.close()
         self.assertIsNotNone(app)

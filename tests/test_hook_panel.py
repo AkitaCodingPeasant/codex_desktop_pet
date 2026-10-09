@@ -119,6 +119,9 @@ class HookPanelTests(unittest.TestCase):
 
                 event_buttons["工具執行後"].click()
                 listener._receive_pending()
+                self.assertEqual(pet.state, "working")
+                pet.working_timer.stop()
+                pet._finish_working_window()
                 self.assertEqual(pet.state, "thinking")
 
                 event_buttons["請求授權"].click()

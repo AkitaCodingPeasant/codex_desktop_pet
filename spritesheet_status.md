@@ -32,7 +32,7 @@ Thinking_1_1 和 Thinking_1_2 加在一起就是 Thinking
 
 tool.started
 → 桌寵：Working
-撥放 Working intro 一次，接著循環撥放 Working repeat，直到工具執行結束
+撥放 Working intro 一次，接著循環撥放 Working repeat，直到工具執行結束且距離最後一次開始調用至少 2 秒
 Working 優先於 Thinking，低於 Asking 與結果動畫
 
 action_required

@@ -28,6 +28,8 @@ PET_EVENTS = frozenset((
 
 def event_for_hook(payload: dict) -> str | None:
     hook_name = payload.get("hook_event_name")
+    if not isinstance(hook_name, str):
+        return None
     tool_name = payload.get("tool_name")
     tool_name = tool_name.rsplit(".", 1)[-1] if isinstance(tool_name, str) else ""
     if hook_name == "PreToolUse":

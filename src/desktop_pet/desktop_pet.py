@@ -241,15 +241,24 @@ class DesktopPet(QWidget):
 
         self.animation_timer = QTimer(self)
         self.animation_timer.timeout.connect(self.advance_frame)
+        self.working_timer = QTimer(self)
+        self.working_timer.setSingleShot(True)
+        self.working_timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self.working_timer.timeout.connect(self._finish_working_window)
         self.topmost_timer = QTimer(self)
         self.topmost_timer.timeout.connect(self.keep_on_top)
         self.topmost_timer.start(1000)
         self._next_idle()
 
     def _saved_number(self, key: str, default: int, minimum: int, maximum: int) -> int:
+        saved_value = self.settings.value(key, default)
         try:
-            value = int(self.settings.value(key, default))
-        except (TypeError, ValueError):
+            value = (
+                int(saved_value)
+                if isinstance(saved_value, (str, int, float))
+                else default
+            )
+        except (TypeError, ValueError, OverflowError):
             value = default
         return max(minimum, min(maximum, value))
 
@@ -354,7 +363,7 @@ class DesktopPet(QWidget):
 
     def _play_active_state(self) -> None:
         asking = any(status in {"asking", "asking_user"} for status in self.active_turns.values())
-        working = any(self.active_tool_counts.values())
+        working = any(self.active_tool_counts.values()) or self.working_timer.isActive()
         target = "asking" if asking else "working" if working else "thinking"
         self.status_text = (
             "等待授權" if "asking" in self.active_turns.values()
@@ -376,6 +385,14 @@ class DesktopPet(QWidget):
             self._update_panel_status()
         else:
             self._play_active_state()
+
+    def _finish_working_window(self) -> None:
+        if self.state == "result":
+            return
+        if self.active_turns:
+            self._play_active_state()
+        else:
+            self._next_idle()
 
     def _start_next_result(self) -> None:
         event_name, message = self.pending_results.pop(0)
@@ -443,6 +460,7 @@ class DesktopPet(QWidget):
             if self.active_turns.get(key) != "asking":
                 self.active_turns[key] = "thinking"
             self.active_tool_counts[key] = self.active_tool_counts.get(key, 0) + 1
+            self.working_timer.start(2000)
             if self.state != "result":
                 self.reply_timer.stop()
                 self.reply_bubble.hide()
@@ -475,6 +493,8 @@ class DesktopPet(QWidget):
                     self.finished_turns.pop()
             self.active_turns.pop(key, None)
             self.active_tool_counts.pop(key, None)
+            if not self.active_tool_counts:
+                self.working_timer.stop()
             self.pending_results.append((event_name, message))
             if self.state == "result":
                 self._update_panel_status()
@@ -494,6 +514,8 @@ class DesktopPet(QWidget):
                 for active_key, count in self.active_tool_counts.items()
                 if active_key[0] != session_id
             }
+            if not self.active_tool_counts:
+                self.working_timer.stop()
             if self.state == "result":
                 self._update_panel_status()
             elif self.active_turns:

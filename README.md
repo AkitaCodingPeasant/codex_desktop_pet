@@ -38,13 +38,13 @@ uv run python install_codex_hooks.py
 | Codex 事件 | 桌寵反應 |
 | --- | --- |
 | `UserPromptSubmit` | 開始回合，播放 Thinking；清理同一工作階段未正常結束的舊回合 |
-| 一般工具的 `PreToolUse` / `PostToolUse` | 開始／結束工具執行，依仍在進行的工作切換 Working 或 Thinking |
+| 一般工具的 `PreToolUse` / `PostToolUse` | 開始／結束工具執行；Working 從每次開始調用起至少播放 2 秒，結束後才切換 Thinking |
 | `PermissionRequest` | 播放 Asking，顯示「等待授權」 |
 | `request_user_input` 或 `request_user_input_async` 的 `PreToolUse` | 播放 Asking，顯示「等待回覆」 |
 | `Stop` / `Interrupt` | 播放 Success／Cancelled，並結束該回合 |
 | `SessionEnd` | 清理該工作階段的狀態 |
 
-同步提問工具的 `PostToolUse` 會結束等待回覆；非同步提問工具送出後會維持 Asking，直到後續工作事件或回合結束。不同回合同時工作時，狀態優先順序為結果動畫、Asking、Working、Thinking。同一工作階段較早回合的延遲事件不會覆蓋目前回合的狀態。
+同步提問工具的 `PostToolUse` 會結束等待回覆；非同步提問工具送出後會維持 Asking，直到後續工作事件或回合結束。工具在 2 秒內完成時，Working 仍會播放到期限；期間若開始另一個工具，會從新工具的開始時間重新計算 2 秒，動畫不中斷。回合完成、失敗或取消會立即播放結果動畫，不等待 Working 的 2 秒；工作階段結束也會立即清理狀態。不同回合同時工作時，狀態優先順序為結果動畫、Asking、Working、Thinking。同一工作階段較早回合的延遲事件不會覆蓋目前回合的狀態。
 
 Codex 目前沒有專門的回合失敗 hook，因此單一工具錯誤不會觸發 Failed。若其他事件來源能確定整個回合失敗，可執行：
 

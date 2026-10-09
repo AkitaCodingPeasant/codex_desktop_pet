@@ -5,7 +5,7 @@ from uuid import uuid4
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QFontDatabase, QPixmap
+from PySide6.QtGui import QFont, QFontDatabase, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QDialog,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from desktop_pet.config import PROJECT_ROOT
 from desktop_pet.hook_install import install_hooks
 
 
@@ -34,6 +35,7 @@ class SettingsPanel(QDialog):
         super().__init__()
         self.setWindowTitle("桌寵設定")
         self.setWindowFlag(Qt.WindowType.Window)
+        self.setWindowIcon(QIcon(str(PROJECT_ROOT / "icon.png")))
         self.setFixedWidth(650)
         self.setObjectName("settingsPanel")
         self._set_chinese_font()
