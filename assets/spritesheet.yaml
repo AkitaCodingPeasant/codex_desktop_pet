@@ -1,0 +1,59 @@
+image: spritesheet.png
+fps: 16
+
+frame:
+  width: 190
+  height: 240
+
+animations:
+  idle_1:
+    row: 1
+    frames: 49
+  idle_2_1:
+    row: 2
+    frames: 76
+  idle_2_2:
+    row: 3
+    frames: 75
+  idle_3:
+    row: 4
+    frames: 58
+  idle_4:
+    row: 5
+    frames: 56
+  thinking_1_1:
+    row: 6
+    frames: 49
+  thinking_1_2:
+    row: 7
+    frames: 49
+  success_intro:
+    row: 8
+    frames: 42
+  success_repeat:
+    row: 9
+    frames: 18
+  asking_intro:
+    row: 10
+    frames: 58
+  asking_repeat:
+    row: 11
+    frames: 63
+  failed_intro:
+    row: 12
+    frames: 32
+  failed_repeat:
+    row: 13
+    frames: 38
+  cancelled_intro:
+    row: 14
+    frames: 9
+  cancelled_repeat:
+    row: 15
+    frames: 72
+  working_intro:
+    row: 16
+    frames: 59
+  working_repeat:
+    row: 17
+    frames: 60
