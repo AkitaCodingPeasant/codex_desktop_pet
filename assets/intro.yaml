@@ -1,0 +1,13 @@
+# PNG folder, relative to this file or an absolute path.
+folder: Intro
+
+# Playback speed in frames per second.
+fps: 32
+
+# 100 = current automatic fit; 50 = half size. Enlargements stay on screen.
+scale_percent: 50
+
+# 0 = left/top edge, 0.5 = center, 1 = right/bottom edge.
+# The animation stays entirely on screen.
+x: 0.5
+y: 0.5
