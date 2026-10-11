@@ -32,5 +32,8 @@ def main() -> None:
         intro.start()
 
     pet.intro_replay_requested.connect(replay_intro)
-    intro.start()
+    if pet.play_intro:
+        intro.start()
+    else:
+        pet.show()
     sys.exit(app.exec())

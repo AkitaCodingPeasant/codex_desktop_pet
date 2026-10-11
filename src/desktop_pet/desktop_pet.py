@@ -219,6 +219,7 @@ class DesktopPet(QWidget):
         self.scale_percent = self._saved_number("scale_percent", 100, 50, 200)
         default_fps = next(iter(config.animations.values())).fps
         self.fps = self._saved_number("fps", default_fps, 4, 60)
+        self.play_intro = self.settings.value("play_intro", True, type=bool)
         self.settings_panel: SettingsPanel | None = None
         self.context_menu: QMenu | None = None
 
@@ -282,14 +283,19 @@ class DesktopPet(QWidget):
         self.animation_timer.setInterval(max(1, round(1000 / value)))
         self.settings.setValue("fps", value)
 
+    def set_play_intro(self, enabled: bool) -> None:
+        self.play_intro = enabled
+        self.settings.setValue("play_intro", enabled)
+
     def open_settings(self) -> None:
         if self.settings_panel is None:
             preview = self.spritesheet.copy(
                 0, 0, self.config.frame_width, self.config.frame_height
             )
-            panel = SettingsPanel(self.scale_percent, self.fps, preview)
+            panel = SettingsPanel(self.scale_percent, self.fps, preview, self.play_intro) #type: ignore
             panel.scale_changed.connect(self.set_scale_percent)
             panel.fps_changed.connect(self.set_fps)
+            panel.play_intro_changed.connect(self.set_play_intro)
             panel.hook_test_requested.connect(send_event)
             panel.stop_requested.connect(QApplication.quit)
             self.settings_panel = panel

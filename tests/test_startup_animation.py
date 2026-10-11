@@ -7,14 +7,42 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, QRect, QTimer
+from PySide6.QtCore import QPoint, QRect, QTimer, Qt
 from PySide6.QtGui import QColor, QImage
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from desktop_pet.startup_animation import StartupAnimation, load_intro_config, position_on_screen
 
 
 class StartupAnimationTests(unittest.TestCase):
+    def test_left_click_skips_intro_once(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            frames = root / "frames"
+            frames.mkdir()
+            image = QImage(100, 100, QImage.Format.Format_ARGB32)
+            image.fill(QColor(255, 0, 0))
+            for index in range(2):
+                self.assertTrue(image.save(str(frames / f"{index:04}.png")))
+            settings = root / "intro.yaml"
+            settings.write_text("folder: frames\nfps: 1\n", encoding="utf-8")
+            intro = StartupAnimation(settings)
+            finished = []
+            intro.finished.connect(lambda: finished.append(True))
+            try:
+                intro.start()
+                self.assertTrue(intro.isVisible())
+                QTest.mouseClick(intro, Qt.MouseButton.LeftButton)
+                self.assertEqual(finished, [True])
+                self.assertFalse(intro.isVisible())
+                self.assertFalse(intro.timer.isActive())
+                intro._finish()
+                self.assertEqual(finished, [True])
+            finally:
+                intro.close()
+
     def test_settings_control_folder_fps_and_scale(self) -> None:
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as temporary:

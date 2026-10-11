@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QFontDatabase, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
+    QCheckBox,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -28,10 +29,11 @@ from desktop_pet.hook_install import install_hooks
 class SettingsPanel(QDialog):
     scale_changed = Signal(int)
     fps_changed = Signal(int)
+    play_intro_changed = Signal(bool)
     stop_requested = Signal()
     hook_test_requested = Signal(str, str, str, str)
 
-    def __init__(self, scale: int, fps: int, preview: QPixmap):
+    def __init__(self, scale: int, fps: int, preview: QPixmap, play_intro: bool = True):
         super().__init__()
         self.setWindowTitle("桌寵設定")
         self.setWindowFlag(Qt.WindowType.Window)
@@ -140,6 +142,11 @@ class SettingsPanel(QDialog):
         )
         self.scale_slider.valueChanged.connect(self.scale_changed)
         self.fps_slider.valueChanged.connect(self.fps_changed)
+
+        self.play_intro_checkbox = QCheckBox("啟動時播放開場動畫")
+        self.play_intro_checkbox.setChecked(play_intro)
+        self.play_intro_checkbox.toggled.connect(self.play_intro_changed)
+        root.addWidget(self.play_intro_checkbox)
 
         note = QLabel("設定會自動儲存，下次啟動時繼續使用。")
         note.setObjectName("note")
@@ -276,6 +283,8 @@ class SettingsPanel(QDialog):
                 font-weight: 700;
             }
             QSpinBox:focus { border-color: #6bd8c1; }
+            QCheckBox { color: #edf4f9; spacing: 10px; font-size: 13px; }
+            QCheckBox::indicator { width: 18px; height: 18px; }
             QSlider::groove:horizontal { height: 6px; background: #344455; border-radius: 3px; }
             QSlider::sub-page:horizontal { background: #66d4bd; border-radius: 3px; }
             QSlider::handle:horizontal {

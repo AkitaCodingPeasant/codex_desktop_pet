@@ -153,3 +153,10 @@ class StartupAnimation(QWidget):
         self.timer.stop()
         self.hide()
         self.finished.emit()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._finish()
+            event.accept()
+        else:
+            super().mousePressEvent(event)

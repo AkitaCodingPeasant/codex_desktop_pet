@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, QPoint, QTimer, Signal, Qt
+from PySide6.QtCore import QObject, QPoint, QSettings, QTimer, Signal, Qt
 from PySide6.QtWidgets import QApplication
 
 from desktop_pet import app as pet_app
@@ -28,6 +30,69 @@ class FakeStartupAnimation(QObject):
 
 
 class AppLifecycleTests(unittest.TestCase):
+    def test_intro_setting_persists_and_disables_startup_playback(self) -> None:
+        qt_app = QApplication.instance() or QApplication([])
+        original_quit_setting = qt_app.quitOnLastWindowClosed()
+        observed = {}
+        created_pets = []
+        with tempfile.TemporaryDirectory() as temporary:
+            settings_path = Path(temporary) / "pet.ini"
+            settings = QSettings(str(settings_path), QSettings.Format.IniFormat)
+            settings.setValue("play_intro", False)
+
+            def create_pet(config):
+                pet = DesktopPet(config)
+                created_pets.append(pet)
+                return pet
+
+            def verify_startup() -> None:
+                pet = created_pets[0]
+                observed["visible_without_intro"] = pet.isVisible()
+                observed["intro_start_count"] = FakeStartupAnimation.latest.start_count
+                pet.open_settings()
+                observed["checkbox_off"] = not pet.settings_panel.play_intro_checkbox.isChecked()
+                pet.settings_panel.play_intro_checkbox.setChecked(True)
+                observed["saved_enabled"] = settings.value("play_intro", type=bool)
+                pet.settings_panel.close()
+                pet.set_play_intro(False)
+                pet.intro_replay_requested.emit()
+                observed["hidden_for_manual_replay"] = not pet.isVisible()
+
+                def verify_replay() -> None:
+                    observed["visible_after_replay"] = pet.isVisible()
+                    observed["manual_replay_count"] = FakeStartupAnimation.latest.start_count
+                    pet.close()
+                    qt_app.quit()
+
+                QTimer.singleShot(20, verify_replay)
+
+            try:
+                QTimer.singleShot(0, verify_startup)
+                QTimer.singleShot(1000, qt_app.quit)
+                with (
+                    patch.object(pet_app, "QApplication", return_value=qt_app),
+                    patch.object(pet_app, "HookListener"),
+                    patch.object(pet_app, "StartupAnimation", FakeStartupAnimation),
+                    patch.object(pet_app, "DesktopPet", side_effect=create_pet),
+                    patch.object(pet_app.sys, "exit"),
+                    patch("desktop_pet.desktop_pet.QSettings", return_value=settings),
+                    patch("desktop_pet.desktop_pet.keep_topmost"),
+                ):
+                    pet_app.main()
+                self.assertEqual(observed, {
+                    "visible_without_intro": True,
+                    "intro_start_count": 0,
+                    "checkbox_off": True,
+                    "saved_enabled": True,
+                    "hidden_for_manual_replay": True,
+                    "visible_after_replay": True,
+                    "manual_replay_count": 1,
+                })
+            finally:
+                qt_app.setQuitOnLastWindowClosed(original_quit_setting)
+                for widget in qt_app.topLevelWidgets():
+                    widget.close()
+
     def test_closing_settings_keeps_desktop_pet_running(self) -> None:
         qt_app = QApplication.instance() or QApplication([])
         original_quit_setting = qt_app.quitOnLastWindowClosed()
