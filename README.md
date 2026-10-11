@@ -2,6 +2,8 @@
 
 這是一個以 PySide6 製作的 Windows 桌寵。它會顯示在視窗最上層，並透過本機 Codex hook 事件播放工作、等待授權與完成等動畫。桌寵也能顯示 Codex 最後回覆的簡短預覽。
 
+![桌寵開場動畫](assets/Intro.gif)
+
 ## 安裝與啟動
 
 需要 Windows、Python 3.14 以上及 [uv](https://docs.astral.sh/uv/)。在專案根目錄執行：
