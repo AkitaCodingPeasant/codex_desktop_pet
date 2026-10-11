@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, QPoint, QTimer, Signal
+from PySide6.QtCore import QObject, QPoint, QTimer, Signal, Qt
 from PySide6.QtWidgets import QApplication
 
 from desktop_pet import app as pet_app
@@ -93,6 +93,9 @@ class AppLifecycleTests(unittest.TestCase):
             def __init__(self, parent):
                 self.actions = []
 
+            def setWindowFlag(self, flag):
+                pass
+
             def addAction(self, label):
                 action = object()
                 self.actions.append(action)
@@ -105,6 +108,53 @@ class AppLifecycleTests(unittest.TestCase):
             with patch("desktop_pet.desktop_pet.QMenu", FakeMenu):
                 pet.contextMenuEvent(MenuEvent())
             self.assertEqual(requested, [True])
+        finally:
+            pet.close()
+
+    def test_context_menu_stays_above_pet_during_topmost_refresh(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        pet = DesktopPet(load_spritesheet_config())
+        pet.show()
+        observed = {}
+
+        class MenuEvent:
+            def globalPos(self):
+                return QPoint(0, 0)
+
+        class FakeMenu:
+            def __init__(self, parent):
+                self.actions = []
+
+            def setWindowFlag(self, flag):
+                observed["topmost_flag"] = flag == Qt.WindowType.WindowStaysOnTopHint
+
+            def addAction(self, label):
+                action = object()
+                self.actions.append(action)
+                return action
+
+            def isVisible(self):
+                return True
+
+            def winId(self):
+                return 12345
+
+            def exec(self, position):
+                pet.keep_on_top()
+                return None
+
+        try:
+            with (
+                patch("desktop_pet.desktop_pet.QMenu", FakeMenu),
+                patch("desktop_pet.desktop_pet.keep_topmost") as keep_topmost_mock,
+            ):
+                pet.contextMenuEvent(MenuEvent())
+            self.assertTrue(observed["topmost_flag"])
+            self.assertEqual(
+                [call.args[0] for call in keep_topmost_mock.call_args_list],
+                [int(pet.winId()), 12345],
+            )
+            self.assertIsNone(pet.context_menu)
         finally:
             pet.close()
 

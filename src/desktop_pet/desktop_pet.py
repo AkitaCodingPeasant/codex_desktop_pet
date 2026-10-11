@@ -220,6 +220,7 @@ class DesktopPet(QWidget):
         default_fps = next(iter(config.animations.values())).fps
         self.fps = self._saved_number("fps", default_fps, 4, 60)
         self.settings_panel: SettingsPanel | None = None
+        self.context_menu: QMenu | None = None
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -317,6 +318,8 @@ class DesktopPet(QWidget):
             keep_topmost(int(self.winId()))
             if self.reply_bubble.isVisible():
                 keep_topmost(int(self.reply_bubble.winId()))
+            if self.context_menu is not None and self.context_menu.isVisible():
+                keep_topmost(int(self.context_menu.winId()))
 
     def _position_reply_bubble(self) -> None:
         if not self.reply_bubble.isVisible():
@@ -622,9 +625,14 @@ class DesktopPet(QWidget):
 
     def contextMenuEvent(self, event) -> None:
         menu = QMenu(self)
+        menu.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         replay_action = menu.addAction("重新播放開機動畫")
         exit_action = menu.addAction("Exit")
-        selected_action = menu.exec(event.globalPos())
+        self.context_menu = menu
+        try:
+            selected_action = menu.exec(event.globalPos())
+        finally:
+            self.context_menu = None
         if selected_action == replay_action:
             self.intro_replay_requested.emit()
         elif selected_action == exit_action:
