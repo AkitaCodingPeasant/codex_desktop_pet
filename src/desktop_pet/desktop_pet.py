@@ -6,7 +6,7 @@ import random
 import re
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, QSettings, Qt, QTimer
+from PySide6.QtCore import QPoint, QRect, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -193,6 +193,8 @@ class ReplyBubble(QWidget):
 
 
 class DesktopPet(QWidget):
+    intro_replay_requested = Signal()
+
     def __init__(self, config: SpriteSheetConfig):
         super().__init__()
         self.config = config
@@ -299,6 +301,11 @@ class DesktopPet(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         QTimer.singleShot(0, self.keep_on_top)
+
+    def hideEvent(self, event) -> None:
+        self.reply_timer.stop()
+        self.reply_bubble.hide()
+        super().hideEvent(event)
 
     def closeEvent(self, event) -> None:
         if self.settings_panel is not None:
@@ -615,6 +622,10 @@ class DesktopPet(QWidget):
 
     def contextMenuEvent(self, event) -> None:
         menu = QMenu(self)
+        replay_action = menu.addAction("重新播放開機動畫")
         exit_action = menu.addAction("Exit")
-        if menu.exec(event.globalPos()) == exit_action:
+        selected_action = menu.exec(event.globalPos())
+        if selected_action == replay_action:
+            self.intro_replay_requested.emit()
+        elif selected_action == exit_action:
             QApplication.quit()

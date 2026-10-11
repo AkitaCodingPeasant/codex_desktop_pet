@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication
 from desktop_pet.config import PROJECT_ROOT, load_spritesheet_config
 from desktop_pet.desktop_pet import DesktopPet
 from desktop_pet.hook_listener import HookListener
+from desktop_pet.startup_animation import StartupAnimation
 
 
 def main() -> None:
@@ -23,5 +24,13 @@ def main() -> None:
     listener = HookListener(pet)
     listener.event_received.connect(pet.handle_event)
     app.aboutToQuit.connect(listener.close)
-    pet.show()
+    intro = StartupAnimation(PROJECT_ROOT / "assets" / "intro.yaml")
+    intro.finished.connect(pet.show)
+
+    def replay_intro() -> None:
+        pet.hide()
+        intro.start()
+
+    pet.intro_replay_requested.connect(replay_intro)
+    intro.start()
     sys.exit(app.exec())
