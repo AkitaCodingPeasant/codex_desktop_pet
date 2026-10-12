@@ -64,6 +64,8 @@ uv run python install_codex_hooks.py
 
 所有偏好都會自動保存。關閉設定面板不會結束桌寵；若要退出，請從右鍵選單選擇「Exit」，或在設定頁按「停止運行」。
 
+![桌寵Demo](assets/Demo.gif)
+
 ## 狀態說明
 
 | 畫面狀態 | 代表意義 |
