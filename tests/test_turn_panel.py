@@ -12,7 +12,13 @@ from PySide6.QtWidgets import QApplication
 
 from desktop_pet.config import load_spritesheet_config
 from desktop_pet.desktop_pet import DesktopPet
-from desktop_pet.session_panel import MAX_PANEL_WIDTH, MIN_PANEL_WIDTH, TurnPanel
+from desktop_pet.session_panel import (
+    MAX_PANEL_WIDTH,
+    MIN_PANEL_WIDTH,
+    PANEL_HEIGHT_BASE,
+    PANEL_ROW_HEIGHT,
+    TurnPanel,
+)
 
 
 class TurnPanelTests(unittest.TestCase):
@@ -171,7 +177,7 @@ class TurnPanelTests(unittest.TestCase):
         self.app.processEvents()
         self.assertGreaterEqual(panel.width(), MIN_PANEL_WIDTH)
         self.assertLessEqual(panel.width(), MAX_PANEL_WIDTH)
-        self.assertGreaterEqual(row.height(), 60)
+        self.assertGreaterEqual(row.height(), 50)
         self.assertGreaterEqual(panel.scroll_area.viewport().height(), row.height())
         self.assertLess(row.status_label.y(), row.name_label.y())
         self.assertLess(row.status_dot.x(), row.status_label.x())
@@ -185,6 +191,15 @@ class TurnPanelTests(unittest.TestCase):
         self.pet.handle_event("turn.cancelled", session_id="session-a", turn_id="turn-2")
         self.assertEqual(row.status_label.text(), "已取消")
         self.assertEqual(row.status_dot.color.name(), "#c43c3c")
+
+    def test_panel_uses_compact_height_per_visible_session(self) -> None:
+        panel = self.pet.session_panel
+        self.assertEqual(PANEL_HEIGHT_BASE + PANEL_ROW_HEIGHT, 108)
+        self.assertEqual(panel.height(), PANEL_HEIGHT_BASE + PANEL_ROW_HEIGHT)
+
+        self.pet.handle_event("turn.started", session_id="session-a", turn_id="turn-a")
+        self.pet.handle_event("turn.started", session_id="session-b", turn_id="turn-b")
+        self.assertEqual(panel.height(), 162)
 
     def test_panel_switches_to_left_at_right_edge(self) -> None:
         self.pet.session_offset = None

@@ -41,6 +41,9 @@ DEFAULT_PANEL_WIDTH = 330
 MIN_PANEL_WIDTH = 220
 MAX_PANEL_WIDTH = 800
 MAX_TITLE_CHARS = 100
+PANEL_HEIGHT_BASE = 54
+PANEL_ROW_HEIGHT = 54
+MAX_VISIBLE_ROWS = 7
 
 class DismissButton(QPushButton):
     def paintEvent(self, event: QPaintEvent) -> None:
@@ -152,7 +155,7 @@ class SessionRow(QFrame):
         self.terminal = False
         self.setObjectName("sessionRow")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 6, 8, 6)
+        layout.setContentsMargins(10, 3, 8, 3)
         layout.setSpacing(2)
         top_row = QHBoxLayout()
         top_row.setSpacing(6)
@@ -176,7 +179,7 @@ class SessionRow(QFrame):
         top_row.addWidget(self.dismiss_button)
         layout.addLayout(top_row)
         layout.addWidget(self.name_label)
-        self.setMinimumHeight(60)
+        self.setMinimumHeight(50)
         self.set_status("思考中")
 
     def set_status(self, status: str, terminal: bool = False) -> None:
@@ -293,13 +296,13 @@ class TurnPanel(QWidget):
         self.next_number = 1
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(6, 6, 6, 6)
+        outer.setContentsMargins(4, 4, 4, 4)
         card = QFrame()
         card.setObjectName("turnCard")
         outer.addWidget(card)
         content = QVBoxLayout(card)
-        content.setContentsMargins(12, 12, 12, 12)
-        content.setSpacing(8)
+        content.setContentsMargins(10, 10, 10, 10)
+        content.setSpacing(6)
         heading = QLabel("SESSION 工作狀態")
         self.heading = heading
         heading.setObjectName("turnHeading")
@@ -314,7 +317,7 @@ class TurnPanel(QWidget):
         self.list_widget.setObjectName("turnList")
         self.list_layout = QVBoxLayout(self.list_widget)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
-        self.list_layout.setSpacing(6)
+        self.list_layout.setSpacing(4)
         self.empty_label = QLabel("閒置中")
         self.empty_label.setObjectName("emptyTurns")
         self.list_layout.addWidget(self.empty_label)
@@ -391,4 +394,6 @@ class TurnPanel(QWidget):
 
     def _resize_for_rows(self) -> None:
         count = max(1, len(self.rows))
-        self.setFixedHeight(68 + min(count, 7) * 64)
+        self.setFixedHeight(
+            PANEL_HEIGHT_BASE + min(count, MAX_VISIBLE_ROWS) * PANEL_ROW_HEIGHT
+        )
