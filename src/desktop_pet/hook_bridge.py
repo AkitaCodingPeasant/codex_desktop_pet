@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import ntpath
 import os
 import re
 import socket
 import sys
+import tempfile
+from pathlib import Path
 
 from PySide6.QtGui import QTextDocument
 
@@ -23,10 +26,46 @@ CODEX_EVENTS = {
     "SessionEnd": "session.ended",
 }
 USER_INPUT_TOOLS = frozenset({"request_user_input", "request_user_input_async"})
+MEMORY_WRITING_AGENT_PROMPT = re.compile(
+    r"^\s*##\s+Memory Writing Agent(?:\s*:|\s*$)", re.IGNORECASE
+)
+IGNORED_SESSION_DIR = (
+    Path(tempfile.gettempdir()) / "codex_desktop_pet" / "ignored_sessions"
+)
 PET_EVENTS = frozenset((
     *CODEX_EVENTS.values(), "turn.failed", "user_input_requested",
     "user_input_completed", "tool.started",
 ))
+
+
+def _ignored_session_marker(session_id: str) -> Path:
+    digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+    return IGNORED_SESSION_DIR / digest
+
+
+def should_ignore_hook(payload: dict) -> bool:
+    hook_name = payload.get("hook_event_name")
+    session_id = payload.get("session_id")
+    prompt = payload.get("prompt")
+    is_memory_writer = (
+        hook_name == "UserPromptSubmit"
+        and isinstance(prompt, str)
+        and MEMORY_WRITING_AGENT_PROMPT.match(prompt) is not None
+    )
+
+    if not isinstance(session_id, str) or not session_id:
+        return is_memory_writer
+
+    marker = _ignored_session_marker(session_id)
+    if is_memory_writer:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch(exist_ok=True)
+        return True
+
+    ignored = marker.is_file()
+    if ignored and hook_name == "SessionEnd":
+        marker.unlink(missing_ok=True)
+    return ignored
 
 
 def event_for_hook(payload: dict) -> str | None:
@@ -130,7 +169,7 @@ def main() -> None:
     try:
         payload = json.load(sys.stdin.buffer)
         hook_name = payload.get("hook_event_name")
-        event_name = event_for_hook(payload)
+        event_name = None if should_ignore_hook(payload) else event_for_hook(payload)
         if event_name is not None:
             message = (
                 payload.get("last_assistant_message") if hook_name == "Stop"

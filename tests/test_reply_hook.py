@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import json
 import io
+import json
 import socket
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from desktop_pet.hook_bridge import CODEX_EVENTS, HOST, MAX_REPLY_CHARS, MAX_SESSION_TITLE_CHARS, completion_preview, event_for_hook, prompt_with_working_directory, reply_preview, send_event
+from desktop_pet.hook_bridge import CODEX_EVENTS, HOST, MAX_REPLY_CHARS, MAX_SESSION_TITLE_CHARS, completion_preview, event_for_hook, prompt_with_working_directory, reply_preview, send_event, should_ignore_hook
 from desktop_pet.hook_listener import HookListener
 
 
@@ -80,6 +82,67 @@ class ReplyHookTests(unittest.TestCase):
                 main()
             packet, _ = receiver.recvfrom(4096)
         self.assertEqual(json.loads(packet.decode("utf-8"))["event"], "tool.started")
+
+    def test_memory_writing_agent_session_is_ignored_until_session_end(self) -> None:
+        import desktop_pet.hook_bridge as bridge
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            bridge, "IGNORED_SESSION_DIR", Path(directory)
+        ):
+            self.assertTrue(should_ignore_hook({
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "memory-session",
+                "prompt": "## Memory Writing Agent: Phase 2 (Consolidation)\n\n工作內容",
+            }))
+            self.assertTrue(should_ignore_hook({
+                "hook_event_name": "PreToolUse",
+                "session_id": "memory-session",
+                "tool_name": "Bash",
+            }))
+            self.assertTrue(should_ignore_hook({
+                "hook_event_name": "Stop",
+                "session_id": "memory-session",
+            }))
+            self.assertTrue(should_ignore_hook({
+                "hook_event_name": "SessionEnd",
+                "session_id": "memory-session",
+            }))
+            self.assertFalse(should_ignore_hook({
+                "hook_event_name": "PreToolUse",
+                "session_id": "memory-session",
+                "tool_name": "Bash",
+            }))
+
+    def test_memory_writing_agent_hook_does_not_send_pet_event(self) -> None:
+        import desktop_pet.hook_bridge as bridge
+
+        hook_input = json.dumps({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "memory-session",
+            "turn_id": "memory-turn",
+            "prompt": "## Memory Writing Agent: Phase 2 (Consolidation)",
+        }).encode("utf-8")
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(bridge, "IGNORED_SESSION_DIR", Path(directory)),
+            patch.object(bridge, "send_event") as send_event_mock,
+            patch("sys.argv", ["hook_bridge.py"]),
+            patch("sys.stdin", io.TextIOWrapper(io.BytesIO(hook_input), encoding="utf-8")),
+        ):
+            bridge.main()
+        send_event_mock.assert_not_called()
+
+    def test_regular_prompt_that_mentions_memory_writer_is_not_ignored(self) -> None:
+        import desktop_pet.hook_bridge as bridge
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            bridge, "IGNORED_SESSION_DIR", Path(directory)
+        ):
+            self.assertFalse(should_ignore_hook({
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "regular-session",
+                "prompt": "請說明 Memory Writing Agent 是什麼",
+            }))
 
     def test_user_prompt_hook_sends_short_session_title(self) -> None:
         from desktop_pet.hook_bridge import main
