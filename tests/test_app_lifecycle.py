@@ -217,7 +217,7 @@ class AppLifecycleTests(unittest.TestCase):
             self.assertTrue(observed["topmost_flag"])
             self.assertEqual(
                 [call.args[0] for call in keep_topmost_mock.call_args_list],
-                [int(pet.winId()), 12345],
+                [int(pet.winId()), int(pet.session_panel.winId()), 12345],
             )
             self.assertIsNone(pet.context_menu)
         finally:

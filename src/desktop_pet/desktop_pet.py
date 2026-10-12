@@ -23,6 +23,7 @@ from desktop_pet.config import SpriteSheetConfig
 from desktop_pet.hook_bridge import send_event
 from desktop_pet.settings_panel import SettingsPanel
 from desktop_pet.topmost import keep_topmost
+from desktop_pet.session_panel import EVENT_STATUSES, TERMINAL_STATUSES, TurnPanel
 
 
 IDLE_CLIPS = (("idle_1",), ("idle_2_1", "idle_2_2"), ("idle_3",), ("idle_4",))
@@ -205,6 +206,10 @@ class DesktopPet(QWidget):
         self.animation_name = ""
         self.frame_index = 0
         self.drag_position: QPoint | None = None
+        self.drag_start_global: QPoint | None = None
+        self.drag_moved = False
+        self.session_panel_open = True
+        self.panel_before_click: bool | None = None
         self.state = "idle"
         self.status_text = "閒置"
         self.active_turns: dict[tuple[str, str], str] = {}
@@ -239,9 +244,13 @@ class DesktopPet(QWidget):
         self.label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
         self.reply_bubble = ReplyBubble(self)
+        self.session_panel = TurnPanel(self)
         self.reply_timer = QTimer(self)
         self.reply_timer.setSingleShot(True)
         self.reply_timer.timeout.connect(self.reply_bubble.hide)
+        self.panel_toggle_timer = QTimer(self)
+        self.panel_toggle_timer.setSingleShot(True)
+        self.panel_toggle_timer.timeout.connect(self._clear_pending_panel_click)
 
         self.animation_timer = QTimer(self)
         self.animation_timer.timeout.connect(self.advance_frame)
@@ -275,6 +284,7 @@ class DesktopPet(QWidget):
         self.label.setFixedSize(self.size())
         self.move(self._clamp_to_single_screen(self.pos()))
         self._position_reply_bubble()
+        self._position_session_panel()
         self.show_current_frame()
         self.settings.setValue("scale_percent", value)
 
@@ -307,12 +317,30 @@ class DesktopPet(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        if self.session_panel_open:
+            self.session_panel.show()
+        self._position_session_panel()
         QTimer.singleShot(0, self.keep_on_top)
 
     def hideEvent(self, event) -> None:
         self.reply_timer.stop()
+        self.panel_toggle_timer.stop()
+        self.panel_before_click = None
         self.reply_bubble.hide()
+        self.session_panel.hide()
         super().hideEvent(event)
+
+    def _toggle_session_panel(self) -> None:
+        self.session_panel_open = not self.session_panel_open
+        if self.session_panel_open and self.isVisible():
+            self.session_panel.show()
+            self._position_session_panel()
+            self.keep_on_top()
+        else:
+            self.session_panel.hide()
+
+    def _clear_pending_panel_click(self) -> None:
+        self.panel_before_click = None
 
     def closeEvent(self, event) -> None:
         if self.settings_panel is not None:
@@ -324,6 +352,8 @@ class DesktopPet(QWidget):
             keep_topmost(int(self.winId()))
             if self.reply_bubble.isVisible():
                 keep_topmost(int(self.reply_bubble.winId()))
+            if self.session_panel.isVisible():
+                keep_topmost(int(self.session_panel.winId()))
             if self.context_menu is not None and self.context_menu.isVisible():
                 keep_topmost(int(self.context_menu.winId()))
 
@@ -341,6 +371,20 @@ class DesktopPet(QWidget):
         below = self.y() + self.height() + 8
         y = above if above >= area.top() else min(below, area.bottom() - self.reply_bubble.height() + 1)
         self.reply_bubble.move(x, y)
+
+    def _position_session_panel(self) -> None:
+        center = self.frameGeometry().center()
+        screen = QApplication.screenAt(center) or QApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        gap = 8
+        right_x = self.x() + self.width() + gap
+        left_x = self.x() - self.session_panel.width() - gap
+        x = right_x if right_x + self.session_panel.width() <= area.right() + 1 else left_x
+        x = max(area.left(), min(x, area.right() - self.session_panel.width() + 1))
+        y = max(area.top(), min(self.y(), area.bottom() - self.session_panel.height() + 1))
+        self.session_panel.move(x, y)
 
     def _show_reply(self, message: str) -> None:
         self.reply_bubble.setText(message)
@@ -383,7 +427,7 @@ class DesktopPet(QWidget):
         target = "asking" if asking else "working" if working else "thinking"
         self.status_text = (
             "等待授權" if "asking" in self.active_turns.values()
-            else "等待回覆" if asking else "操作工具中" if working else "工作中"
+            else "等待回覆" if asking else "操作工具中" if working else "調用工具中"
         )
         self._update_panel_status()
         if self.state == target:
@@ -449,6 +493,15 @@ class DesktopPet(QWidget):
         if event_name in {"turn.started", "turn.in_progress", "tool.started", "action_required", "user_input_requested", "user_input_completed"}:
             if key in self.finished_turns:
                 return
+        if event_name in RESULT_CLIPS and key in self.finished_turns:
+            return
+        if event_name == "session.ended":
+            self.session_panel.end_session(session_id)
+        elif event_name in EVENT_STATUSES:
+            self.session_panel.set_turn(
+                key, EVENT_STATUSES[event_name], event_name in TERMINAL_STATUSES
+            )
+        self._position_session_panel()
         if event_name == "turn.started":
             if session_id and turn_id:
                 previous_turn = self.current_turns.get(session_id)
@@ -609,24 +662,45 @@ class DesktopPet(QWidget):
 
     def mouseDoubleClickEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            if self.panel_toggle_timer.isActive() and self.panel_before_click is not None:
+                if self.session_panel_open != self.panel_before_click:
+                    self._toggle_session_panel()
+            self.panel_toggle_timer.stop()
+            self.panel_before_click = None
             self.drag_position = None
+            self.drag_start_global = None
             self.open_settings()
             event.accept()
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self.drag_start_global = event.globalPosition().toPoint()
+            self.drag_position = self.drag_start_global - self.frameGeometry().topLeft()
+            self.drag_moved = False
             event.accept()
 
     def mouseMoveEvent(self, event) -> None:
         if self.drag_position is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            if (self.drag_start_global is not None
+                    and (event.globalPosition().toPoint() - self.drag_start_global).manhattanLength()
+                    >= QApplication.startDragDistance()):
+                self.drag_moved = True
+            if not self.drag_moved:
+                event.accept()
+                return
             self.move(self._clamp_to_single_screen(event.globalPosition().toPoint() - self.drag_position))
             self._position_reply_bubble()
+            self._position_session_panel()
             event.accept()
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            if self.drag_position is not None and not self.drag_moved:
+                self.panel_before_click = self.session_panel_open
+                self._toggle_session_panel()
+                self.panel_toggle_timer.start(QApplication.doubleClickInterval())
             self.drag_position = None
+            self.drag_start_global = None
             event.accept()
 
     def contextMenuEvent(self, event) -> None:
