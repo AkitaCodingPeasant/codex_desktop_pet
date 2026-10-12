@@ -30,6 +30,89 @@ class FakeStartupAnimation(QObject):
 
 
 class AppLifecycleTests(unittest.TestCase):
+    def test_session_panel_offset_mirrors_at_both_screen_edges(self) -> None:
+        qt_app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as temporary:
+            settings = QSettings(
+                str(Path(temporary) / "pet.ini"), QSettings.Format.IniFormat
+            )
+            with (
+                patch("desktop_pet.desktop_pet.QSettings", return_value=settings),
+                patch("desktop_pet.desktop_pet.keep_topmost"),
+            ):
+                pet = DesktopPet(load_spritesheet_config())
+                try:
+                    pet.show()
+                    qt_app.processEvents()
+                    area = qt_app.primaryScreen().availableGeometry()
+                    gap = 8
+                    y = area.top() + 50
+
+                    pet.move(area.left(), y)
+                    pet.set_session_offset(-pet.session_panel.width() - gap, 0)
+                    self.assertEqual(
+                        pet.session_panel.x(), pet.x() + pet.width() + gap
+                    )
+
+                    pet.move(area.right() - pet.width() + 1, y)
+                    pet.set_session_offset(pet.width() + gap, 0)
+                    self.assertEqual(
+                        pet.session_panel.x(), pet.x() - pet.session_panel.width() - gap
+                    )
+
+                    pet.move(area.left() + (area.width() - pet.width()) // 2, y)
+                    pet._position_session_panel()
+                    self.assertEqual(
+                        pet.session_panel.x(), pet.x() + pet.width() + gap
+                    )
+                finally:
+                    pet.close()
+
+    def test_session_panel_relative_offset_applies_and_persists(self) -> None:
+        qt_app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as temporary:
+            settings = QSettings(
+                str(Path(temporary) / "pet.ini"), QSettings.Format.IniFormat
+            )
+            with (
+                patch("desktop_pet.desktop_pet.QSettings", return_value=settings),
+                patch("desktop_pet.desktop_pet.keep_topmost"),
+            ):
+                pet = DesktopPet(load_spritesheet_config())
+                try:
+                    pet.show()
+                    qt_app.processEvents()
+                    self.assertIsNone(pet.session_offset)
+                    pet.open_settings()
+                    panel = pet.settings_panel
+                    self.assertEqual(
+                        panel.session_x_spin.value(), pet.session_panel.x() - pet.x()
+                    )
+                    self.assertEqual(
+                        panel.session_y_spin.value(), pet.session_panel.y() - pet.y()
+                    )
+
+                    panel.session_x_spin.setValue(20)
+                    panel.session_y_spin.setValue(30)
+                    self.assertEqual(pet.session_panel.pos(), pet.pos() + QPoint(20, 30))
+                    pet.move(80, 80)
+                    pet._position_session_panel()
+                    self.assertEqual(pet.session_panel.pos(), QPoint(100, 110))
+                    self.assertEqual(settings.value("session_panel_offset_x", type=int), 20)
+                    self.assertEqual(settings.value("session_panel_offset_y", type=int), 30)
+                finally:
+                    pet.close()
+
+                restored = DesktopPet(load_spritesheet_config())
+                try:
+                    restored.show()
+                    qt_app.processEvents()
+                    self.assertEqual(
+                        restored.session_panel.pos(), restored.pos() + QPoint(20, 30)
+                    )
+                finally:
+                    restored.close()
+
     def test_intro_setting_persists_and_disables_startup_playback(self) -> None:
         qt_app = QApplication.instance() or QApplication([])
         original_quit_setting = qt_app.quitOnLastWindowClosed()
@@ -163,16 +246,47 @@ class AppLifecycleTests(unittest.TestCase):
 
             def addAction(self, label):
                 action = object()
-                self.actions.append(action)
+                self.actions.append((label, action))
                 return action
 
             def exec(self, position):
-                return self.actions[0]
+                return next(action for label, action in self.actions if label == "重新播放開機動畫")
 
         try:
             with patch("desktop_pet.desktop_pet.QMenu", FakeMenu):
                 pet.contextMenuEvent(MenuEvent())
             self.assertEqual(requested, [True])
+        finally:
+            pet.close()
+
+    def test_context_menu_opens_settings(self) -> None:
+        QApplication.instance() or QApplication([])
+        pet = DesktopPet(load_spritesheet_config())
+
+        class MenuEvent:
+            def globalPos(self):
+                return QPoint(0, 0)
+
+        class FakeMenu:
+            def __init__(self, parent):
+                self.actions = {}
+
+            def setWindowFlag(self, flag):
+                pass
+
+            def addAction(self, label):
+                action = object()
+                self.actions[label] = action
+                return action
+
+            def exec(self, position):
+                return self.actions["設定"]
+
+        try:
+            with patch("desktop_pet.desktop_pet.QMenu", FakeMenu):
+                pet.contextMenuEvent(MenuEvent())
+            self.assertIsNotNone(pet.settings_panel)
+            self.assertTrue(pet.settings_panel.isVisible())
         finally:
             pet.close()
 

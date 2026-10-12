@@ -11,6 +11,7 @@ from PySide6.QtGui import QTextDocument
 HOST = "127.0.0.1"
 PORT = 49377
 MAX_REPLY_CHARS = 100
+MAX_SESSION_TITLE_CHARS = 25
 CODEX_EVENTS = {
     "UserPromptSubmit": "turn.started",
     "PostToolUse": "turn.in_progress",
@@ -55,6 +56,13 @@ def reply_preview(message: str) -> str:
     return plain_text
 
 
+def session_title_preview(prompt: str) -> str:
+    title = " ".join(prompt.split())
+    if len(title) > MAX_SESSION_TITLE_CHARS:
+        return title[:MAX_SESSION_TITLE_CHARS] + "..."
+    return title
+
+
 def completion_preview(message: str) -> str:
     plain_text = _plain_reply(message)
     files = re.search(
@@ -86,7 +94,11 @@ def send_event(
 ) -> None:
     if event_name not in PET_EVENTS:
         raise ValueError(f"Unknown pet event: {event_name}")
-    preview = completion_preview(message) if event_name == "turn.completed" else message[:MAX_REPLY_CHARS]
+    preview = (
+        completion_preview(message) if event_name == "turn.completed"
+        else session_title_preview(message) if event_name == "turn.started"
+        else message[:MAX_REPLY_CHARS]
+    )
     packet = json.dumps(
         {
             "event": event_name,
@@ -111,7 +123,11 @@ def main() -> None:
         hook_name = payload.get("hook_event_name")
         event_name = event_for_hook(payload)
         if event_name is not None:
-            message = payload.get("last_assistant_message") if hook_name == "Stop" else None
+            message = (
+                payload.get("last_assistant_message") if hook_name == "Stop"
+                else payload.get("prompt") if hook_name == "UserPromptSubmit"
+                else None
+            )
             session_id = payload.get("session_id")
             turn_id = payload.get("turn_id")
             send_event(

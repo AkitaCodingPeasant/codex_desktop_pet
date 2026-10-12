@@ -81,6 +81,37 @@ class ReplyHookTests(unittest.TestCase):
             packet, _ = receiver.recvfrom(4096)
         self.assertEqual(json.loads(packet.decode("utf-8"))["event"], "tool.started")
 
+    def test_user_prompt_hook_sends_short_session_title(self) -> None:
+        from desktop_pet.hook_bridge import main
+        import desktop_pet.hook_bridge as bridge
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
+            receiver.bind((HOST, 0))
+            receiver.settimeout(2)
+            hook_input = json.dumps({
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "session-a",
+                "turn_id": "turn-1",
+                "prompt": "  幫我寫一個\n桌寵狀態面板，再加入來源辨識功能  ",
+            }, ensure_ascii=False).encode("utf-8")
+            with (
+                patch.object(bridge, "PORT", receiver.getsockname()[1]),
+                patch("sys.argv", ["hook_bridge.py"]),
+                patch("sys.stdin", io.TextIOWrapper(io.BytesIO(hook_input), encoding="utf-8")),
+            ):
+                main()
+            packet, _ = receiver.recvfrom(4096)
+        payload = json.loads(packet.decode("utf-8"))
+        self.assertEqual(payload["event"], "turn.started")
+        self.assertEqual(payload["message"], "幫我寫一個 桌寵狀態面板，再加入來源辨識功能"[:24])
+
+    def test_long_session_title_preview_has_three_dots(self) -> None:
+        from desktop_pet.hook_bridge import session_title_preview
+
+        self.assertEqual(session_title_preview("A" * 24), "A" * 24)
+        self.assertEqual(session_title_preview("A" * 25), "A" * 25)
+        self.assertEqual(session_title_preview("A" * 26), "A" * 25 + "...")
+
     def test_stop_hook_sends_first_100_characters(self) -> None:
         from desktop_pet.hook_bridge import main
 

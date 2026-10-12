@@ -5,6 +5,7 @@ import os
 import random
 import re
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import QPoint, QRect, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPixmap
@@ -23,7 +24,14 @@ from desktop_pet.config import SpriteSheetConfig
 from desktop_pet.hook_bridge import send_event
 from desktop_pet.settings_panel import SettingsPanel
 from desktop_pet.topmost import keep_topmost
-from desktop_pet.session_panel import EVENT_STATUSES, TERMINAL_STATUSES, TurnPanel
+from desktop_pet.session_panel import (
+    DEFAULT_PANEL_WIDTH,
+    EVENT_STATUSES,
+    MAX_PANEL_WIDTH,
+    MIN_PANEL_WIDTH,
+    TERMINAL_STATUSES,
+    TurnPanel,
+)
 
 
 IDLE_CLIPS = (("idle_1",), ("idle_2_1", "idle_2_2"), ("idle_3",), ("idle_4",))
@@ -224,7 +232,10 @@ class DesktopPet(QWidget):
         self.scale_percent = self._saved_number("scale_percent", 100, 50, 200)
         default_fps = next(iter(config.animations.values())).fps
         self.fps = self._saved_number("fps", default_fps, 4, 60)
-        self.play_intro = self.settings.value("play_intro", True, type=bool)
+        self.play_intro = cast(
+            bool, self.settings.value("play_intro", True, type=bool)
+        )
+        self.session_offset = self._saved_session_offset()
         self.settings_panel: SettingsPanel | None = None
         self.context_menu: QMenu | None = None
 
@@ -245,6 +256,12 @@ class DesktopPet(QWidget):
 
         self.reply_bubble = ReplyBubble(self)
         self.session_panel = TurnPanel(self)
+        self.session_panel.set_panel_width(self._saved_number(
+            "session_panel_width", DEFAULT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_WIDTH
+        ))
+        self.session_panel.width_changed.connect(
+            lambda width: self.settings.setValue("session_panel_width", width)
+        )
         self.reply_timer = QTimer(self)
         self.reply_timer.setSingleShot(True)
         self.reply_timer.timeout.connect(self.reply_bubble.hide)
@@ -275,6 +292,14 @@ class DesktopPet(QWidget):
             value = default
         return max(minimum, min(maximum, value))
 
+    def _saved_session_offset(self) -> QPoint | None:
+        x = self.settings.value("session_panel_offset_x")
+        y = self.settings.value("session_panel_offset_y")
+        try:
+            return QPoint(int(x), int(y)) if x is not None and y is not None else None
+        except (TypeError, ValueError, OverflowError):
+            return None
+
     def set_scale_percent(self, value: int) -> None:
         self.scale_percent = value
         self.setFixedSize(
@@ -297,15 +322,26 @@ class DesktopPet(QWidget):
         self.play_intro = enabled
         self.settings.setValue("play_intro", enabled)
 
+    def set_session_offset(self, x: int, y: int) -> None:
+        self.session_offset = QPoint(x, y)
+        self.settings.setValue("session_panel_offset_x", x)
+        self.settings.setValue("session_panel_offset_y", y)
+        self._position_session_panel()
+
     def open_settings(self) -> None:
         if self.settings_panel is None:
             preview = self.spritesheet.copy(
                 0, 0, self.config.frame_width, self.config.frame_height
             )
-            panel = SettingsPanel(self.scale_percent, self.fps, preview, self.play_intro) #type: ignore
+            panel = SettingsPanel(
+                self.scale_percent, self.fps, preview, self.play_intro,
+                self.session_panel.x() - self.x(),
+                self.session_panel.y() - self.y(),
+            )
             panel.scale_changed.connect(self.set_scale_percent)
             panel.fps_changed.connect(self.set_fps)
             panel.play_intro_changed.connect(self.set_play_intro)
+            panel.session_offset_changed.connect(self.set_session_offset)
             panel.hook_test_requested.connect(send_event)
             panel.stop_requested.connect(QApplication.quit)
             self.settings_panel = panel
@@ -378,6 +414,17 @@ class DesktopPet(QWidget):
         if screen is None:
             return
         area = screen.availableGeometry()
+        if self.session_offset is not None:
+            x = self.x() + self.session_offset.x()
+            if x < area.left() or x + self.session_panel.width() > area.right() + 1:
+                x = self.x() + self.width() - self.session_offset.x() - self.session_panel.width()
+            x = max(area.left(), min(x, area.right() - self.session_panel.width() + 1))
+            y = max(
+                area.top(),
+                min(self.y() + self.session_offset.y(), area.bottom() - self.session_panel.height() + 1),
+            )
+            self.session_panel.move(x, y)
+            return
         gap = 8
         right_x = self.x() + self.width() + gap
         left_x = self.x() - self.session_panel.width() - gap
@@ -499,7 +546,10 @@ class DesktopPet(QWidget):
             self.session_panel.end_session(session_id)
         elif event_name in EVENT_STATUSES:
             self.session_panel.set_turn(
-                key, EVENT_STATUSES[event_name], event_name in TERMINAL_STATUSES
+                key,
+                EVENT_STATUSES[event_name],
+                event_name in TERMINAL_STATUSES,
+                message if event_name == "turn.started" else "",
             )
         self._position_session_panel()
         if event_name == "turn.started":
@@ -669,13 +719,13 @@ class DesktopPet(QWidget):
             self.panel_before_click = None
             self.drag_position = None
             self.drag_start_global = None
-            self.open_settings()
             event.accept()
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_start_global = event.globalPosition().toPoint()
-            self.drag_position = self.drag_start_global - self.frameGeometry().topLeft()
+            drag_start_global = event.globalPosition().toPoint()
+            self.drag_start_global = drag_start_global
+            self.drag_position = drag_start_global - self.frameGeometry().topLeft()
             self.drag_moved = False
             event.accept()
 
@@ -706,6 +756,7 @@ class DesktopPet(QWidget):
     def contextMenuEvent(self, event) -> None:
         menu = QMenu(self)
         menu.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+        settings_action = menu.addAction("設定")
         replay_action = menu.addAction("重新播放開機動畫")
         exit_action = menu.addAction("Exit")
         self.context_menu = menu
@@ -713,7 +764,9 @@ class DesktopPet(QWidget):
             selected_action = menu.exec(event.globalPos())
         finally:
             self.context_menu = None
-        if selected_action == replay_action:
+        if selected_action == settings_action:
+            self.open_settings()
+        elif selected_action == replay_action:
             self.intro_replay_requested.emit()
         elif selected_action == exit_action:
             QApplication.quit()

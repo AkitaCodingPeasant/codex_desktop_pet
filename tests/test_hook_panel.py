@@ -108,7 +108,7 @@ class HookPanelTests(unittest.TestCase):
 
                 event_buttons["送出提示"].click()
                 listener._receive_pending()
-                self.assertEqual(pet.status_text, "工作中")
+                self.assertEqual(pet.status_text, "調用工具中")
                 self.assertEqual(panel.active_count_value.text(), "1")
 
                 event_buttons["工具開始"].click()

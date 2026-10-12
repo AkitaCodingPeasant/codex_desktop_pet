@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QFontDatabase, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
+    QApplication,
     QCheckBox,
     QDialog,
     QFrame,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSlider,
     QSpinBox,
     QStackedWidget,
@@ -29,11 +31,18 @@ from desktop_pet.hook_install import install_hooks
 class SettingsPanel(QDialog):
     scale_changed = Signal(int)
     fps_changed = Signal(int)
+    session_offset_changed = Signal(int, int)
     play_intro_changed = Signal(bool)
     stop_requested = Signal()
     hook_test_requested = Signal(str, str, str, str)
 
-    def __init__(self, scale: int, fps: int, preview: QPixmap, play_intro: bool = True):
+    session_x_spin: QSpinBox
+    session_y_spin: QSpinBox
+
+    def __init__(
+        self, scale: int, fps: int, preview: QPixmap, play_intro: bool = True,
+        session_x: int = 0, session_y: int = 0,
+    ):
         super().__init__()
         self.setWindowTitle("桌寵設定")
         self.setWindowFlag(Qt.WindowType.Window)
@@ -79,7 +88,13 @@ class SettingsPanel(QDialog):
         root = QVBoxLayout(settings_page)
         root.setContentsMargins(28, 26, 28, 24)
         root.setSpacing(18)
-        self.pages.addWidget(settings_page)
+        settings_scroll = QScrollArea()
+        settings_scroll.setWidgetResizable(True)
+        settings_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        settings_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        settings_scroll.viewport().setStyleSheet("background: transparent;")
+        settings_scroll.setWidget(settings_page)
+        self.pages.addWidget(settings_scroll)
 
         eyebrow = QLabel("DESKTOP PET  /  CONTROL CENTER")
         eyebrow.setObjectName("eyebrow")
@@ -143,6 +158,33 @@ class SettingsPanel(QDialog):
         self.scale_slider.valueChanged.connect(self.scale_changed)
         self.fps_slider.valueChanged.connect(self.fps_changed)
 
+        position_card = QFrame()
+        position_card.setObjectName("settingCard")
+        position_layout = QVBoxLayout(position_card)
+        position_layout.setContentsMargins(19, 16, 19, 16)
+        position_title = QLabel("Session 工作狀態視窗位置")
+        position_title.setObjectName("settingTitle")
+        position_layout.addWidget(position_title)
+        position_hint = QLabel("相對桌寵左上角的位移；遇到左右螢幕邊緣時會鏡像換邊")
+        position_hint.setObjectName("description")
+        position_layout.addWidget(position_hint)
+        coordinates = QHBoxLayout()
+        for label, value, name in (
+            ("X", session_x, "session_x_spin"),
+            ("Y", session_y, "session_y_spin"),
+        ):
+            coordinates.addWidget(QLabel(label))
+            spin = QSpinBox()
+            spin.setObjectName(name)
+            spin.setRange(-32768, 32767)
+            spin.setValue(value)
+            coordinates.addWidget(spin, 1)
+            setattr(self, name, spin)
+        position_layout.addLayout(coordinates)
+        root.addWidget(position_card)
+        self.session_x_spin.valueChanged.connect(self._emit_session_offset)
+        self.session_y_spin.valueChanged.connect(self._emit_session_offset)
+
         self.play_intro_checkbox = QCheckBox("啟動時播放開場動畫")
         self.play_intro_checkbox.setChecked(play_intro)
         self.play_intro_checkbox.toggled.connect(self.play_intro_changed)
@@ -179,7 +221,7 @@ class SettingsPanel(QDialog):
         hook_hint.setWordWrap(True)
         hook_layout.addWidget(hook_hint)
         for label, event_name, description in (
-            ("送出提示", "turn.started", "開始新回合，進入工作中"),
+            ("送出提示", "turn.started", "開始新回合，進入調用工具中"),
             ("工具開始", "tool.started", "播放操作工具動畫"),
             ("工具執行後", "turn.in_progress", "持續工作中的動畫"),
             ("請求授權", "action_required", "進入等待授權的動畫"),
@@ -307,6 +349,9 @@ class SettingsPanel(QDialog):
             }
             QLineEdit:focus { border-color: #6bd8c1; }
         """)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            self.setFixedHeight(min(settings_page.sizeHint().height(), screen.availableGeometry().height() - 40))
 
     def _show_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)
@@ -344,6 +389,11 @@ class SettingsPanel(QDialog):
     def set_work_status(self, status: str, active_count: int) -> None:
         self.status_value.setText(status)
         self.active_count_value.setText(str(active_count))
+
+    def _emit_session_offset(self) -> None:
+        self.session_offset_changed.emit(
+            self.session_x_spin.value(), self.session_y_spin.value()
+        )
 
     def _set_chinese_font(self) -> None:
         font_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
