@@ -74,7 +74,7 @@ class TurnPanelTests(unittest.TestCase):
         self.assertEqual(len(panel.rows), 1)
         self.assertEqual(panel.rows["session-a"].name_label.text(), "Session 1")
 
-    def test_first_prompt_title_survives_later_turns_and_dismissal(self) -> None:
+    def test_session_title_updates_to_latest_prompt(self) -> None:
         self.pet.handle_event(
             "turn.started", "幫我製作桌寵面板", "session-a", "turn-1"
         )
@@ -84,13 +84,32 @@ class TurnPanelTests(unittest.TestCase):
         self.app.processEvents()
         self.assertTrue(panel.rows["session-a"].name_label.isVisible())
         self.pet.handle_event("turn.completed", session_id="session-a", turn_id="turn-1")
-        panel.rows["session-a"].dismiss_button.click()
 
         self.pet.handle_event("turn.started", "請再調整大小", "session-a", "turn-2")
         row = panel.rows["session-a"]
-        self.assertEqual(row.name_label.text(), "幫我製作桌寵面板")
-        self.assertEqual(row.title, "幫我製作桌寵面板")
-        self.assertIn("幫我製作桌寵面板", row.toolTip())
+        self.assertEqual(row.name_label.text(), "請再調整大小")
+        self.assertEqual(row.title, "請再調整大小")
+        self.assertIn("請再調整大小", row.toolTip())
+
+        self.pet.handle_event("turn.completed", session_id="session-a", turn_id="turn-2")
+        panel.rows["session-a"].dismiss_button.click()
+        self.pet.handle_event("turn.started", "請保留最新標題", "session-a", "turn-3")
+        row = panel.rows["session-a"]
+        self.assertEqual(row.name_label.text(), "請保留最新標題")
+        self.assertEqual(row.title, "請保留最新標題")
+        self.assertIn("請保留最新標題", row.toolTip())
+
+    def test_working_directory_prefix_uses_directory_style(self) -> None:
+        self.pet.handle_event(
+            "turn.started",
+            "codex_desktop_pet > 請調整顯示樣式",
+            "session-a",
+            "turn-1",
+        )
+        label = self.pet.session_panel.rows["session-a"].name_label
+        self.assertEqual(label.text(), "codex_desktop_pet > 請調整顯示樣式")
+        self.assertEqual(label.directory_prefix, "codex_desktop_pet")
+        self.assertEqual(label.DIRECTORY_COLOR.name(), "#4E9426")
 
     def test_long_session_title_ends_with_three_dots(self) -> None:
         title = "A" * 26

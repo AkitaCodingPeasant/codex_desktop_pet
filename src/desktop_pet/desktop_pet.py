@@ -232,6 +232,9 @@ class DesktopPet(QWidget):
         self.scale_percent = self._saved_number("scale_percent", 100, 50, 200)
         default_fps = next(iter(config.animations.values())).fps
         self.fps = self._saved_number("fps", default_fps, 4, 60)
+        self.session_opacity = self._saved_number(
+            "session_panel_opacity", 100, 10, 100
+        )
         self.play_intro = cast(
             bool, self.settings.value("play_intro", True, type=bool)
         )
@@ -256,6 +259,7 @@ class DesktopPet(QWidget):
 
         self.reply_bubble = ReplyBubble(self)
         self.session_panel = TurnPanel(self)
+        self.session_panel.setWindowOpacity(self.session_opacity / 100)
         self.session_panel.set_panel_width(self._saved_number(
             "session_panel_width", DEFAULT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_WIDTH
         ))
@@ -322,6 +326,11 @@ class DesktopPet(QWidget):
         self.play_intro = enabled
         self.settings.setValue("play_intro", enabled)
 
+    def set_session_opacity(self, value: int) -> None:
+        self.session_opacity = max(10, min(100, value))
+        self.session_panel.setWindowOpacity(self.session_opacity / 100)
+        self.settings.setValue("session_panel_opacity", self.session_opacity)
+
     def set_session_offset(self, x: int, y: int) -> None:
         self.session_offset = QPoint(x, y)
         self.settings.setValue("session_panel_offset_x", x)
@@ -337,9 +346,11 @@ class DesktopPet(QWidget):
                 self.scale_percent, self.fps, preview, self.play_intro,
                 self.session_panel.x() - self.x(),
                 self.session_panel.y() - self.y(),
+                self.session_opacity,
             )
             panel.scale_changed.connect(self.set_scale_percent)
             panel.fps_changed.connect(self.set_fps)
+            panel.session_opacity_changed.connect(self.set_session_opacity)
             panel.play_intro_changed.connect(self.set_play_intro)
             panel.session_offset_changed.connect(self.set_session_offset)
             panel.hook_test_requested.connect(send_event)

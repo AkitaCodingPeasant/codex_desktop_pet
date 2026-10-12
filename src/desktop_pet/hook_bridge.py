@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import ntpath
+import os
 import re
 import socket
 import sys
@@ -11,7 +13,7 @@ from PySide6.QtGui import QTextDocument
 HOST = "127.0.0.1"
 PORT = 49377
 MAX_REPLY_CHARS = 100
-MAX_SESSION_TITLE_CHARS = 25
+MAX_SESSION_TITLE_CHARS = 100
 CODEX_EVENTS = {
     "UserPromptSubmit": "turn.started",
     "PostToolUse": "turn.in_progress",
@@ -61,6 +63,13 @@ def session_title_preview(prompt: str) -> str:
     if len(title) > MAX_SESSION_TITLE_CHARS:
         return title[:MAX_SESSION_TITLE_CHARS] + "..."
     return title
+
+
+def prompt_with_working_directory(prompt: str, working_directory: str) -> str:
+    if not working_directory.strip():
+        return prompt
+    directory_name = ntpath.basename(ntpath.normpath(working_directory))
+    return f"{directory_name} > {prompt}" if directory_name else prompt
 
 
 def completion_preview(message: str) -> str:
@@ -128,6 +137,12 @@ def main() -> None:
                 else payload.get("prompt") if hook_name == "UserPromptSubmit"
                 else None
             )
+            if hook_name == "UserPromptSubmit" and isinstance(message, str):
+                working_directory = payload.get("cwd")
+                message = prompt_with_working_directory(
+                    message,
+                    working_directory if isinstance(working_directory, str) else os.getcwd(),
+                )
             session_id = payload.get("session_id")
             turn_id = payload.get("turn_id")
             send_event(

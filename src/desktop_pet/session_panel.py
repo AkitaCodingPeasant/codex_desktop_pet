@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPaintEvent, QPainter, QPen, QResizeEvent
+from PySide6.QtGui import (
+    QColor,
+    QFontMetrics,
+    QMouseEvent,
+    QPaintEvent,
+    QPainter,
+    QPen,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -32,8 +40,7 @@ EVENT_STATUSES = {
 DEFAULT_PANEL_WIDTH = 330
 MIN_PANEL_WIDTH = 220
 MAX_PANEL_WIDTH = 800
-MAX_TITLE_CHARS = 25
-
+MAX_TITLE_CHARS = 100
 
 class DismissButton(QPushButton):
     def paintEvent(self, event: QPaintEvent) -> None:
@@ -73,6 +80,66 @@ class StatusDot(QWidget):
         painter.end()
 
 
+class SessionTitleLabel(QLabel):
+    DIRECTORY_COLOR = QColor("#016AA7")
+    DIRECTORY_COLOR = QColor("#5f6368")
+    PROMPT_COLOR = QColor("#5f6368")
+
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.directory_prefix = ""
+
+    def set_directory_prefix(self, prefix: str) -> None:
+        self.directory_prefix = prefix
+        self.update()
+
+    def display_width(self, text: str) -> int:
+        directory_length = min(len(self.directory_prefix), len(text))
+        directory_font = self.font()
+        directory_font.setBold(True)
+        prompt_font = self.font()
+        prompt_font.setBold(False)
+        return (
+            QFontMetrics(directory_font).horizontalAdvance(text[:directory_length])
+            + QFontMetrics(prompt_font).horizontalAdvance(text[directory_length:])
+        )
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        text = self.text()
+        if not self.directory_prefix or not text.startswith(self.directory_prefix):
+            super().paintEvent(event)
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        bounds = self.contentsRect()
+        directory_text = text[:len(self.directory_prefix)]
+        prompt_text = text[len(directory_text):]
+
+        directory_font = self.font()
+        directory_font.setBold(True)
+        painter.setFont(directory_font)
+        painter.setPen(self.DIRECTORY_COLOR)
+        directory_width = painter.fontMetrics().horizontalAdvance(directory_text)
+        painter.drawText(
+            bounds,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            directory_text,
+        )
+
+        prompt_font = self.font()
+        prompt_font.setBold(False)
+        painter.setFont(prompt_font)
+        painter.setPen(self.PROMPT_COLOR)
+        prompt_bounds = bounds.adjusted(directory_width, 0, 0, 0)
+        painter.drawText(
+            prompt_bounds,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            prompt_text,
+        )
+        painter.end()
+
+
 class SessionRow(QFrame):
     dismiss_requested = Signal(object)
 
@@ -89,7 +156,7 @@ class SessionRow(QFrame):
         layout.setSpacing(2)
         top_row = QHBoxLayout()
         top_row.setSpacing(6)
-        self.name_label = QLabel(f"Session {number}")
+        self.name_label = SessionTitleLabel(f"Session {number}")
         self.name_label.setObjectName("sessionName")
         self.name_label.setTextFormat(Qt.TextFormat.PlainText)
         self.name_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -119,7 +186,7 @@ class SessionRow(QFrame):
         elif status == "已取消" or status == "執行失敗":
             color = "#dd2929"
         else:
-            color = "#3988db"
+            color = "#3998d8"
         self.status_dot.set_color(color)
         self.terminal = terminal
         self.dismiss_button.setEnabled(terminal)
@@ -140,10 +207,11 @@ class SessionRow(QFrame):
 
     def _update_visible_title(self) -> None:
         source = self.title or f"Session {self.number}"
+        directory, separator, _ = source.partition(" > ")
+        self.name_label.set_directory_prefix(directory if separator else "")
         visible_title = source[:MAX_TITLE_CHARS]
         shortened = len(source) > MAX_TITLE_CHARS
-        metrics = self.name_label.fontMetrics()
-        while visible_title and metrics.horizontalAdvance(
+        while visible_title and self.name_label.display_width(
             visible_title + ("..." if shortened else "")
         ) > self.name_label.width():
             visible_title = visible_title[:-1]
@@ -287,7 +355,7 @@ class TurnPanel(QWidget):
     ) -> None:
         session_id, turn_id = key
         normalized_title = " ".join(title.split())
-        if normalized_title and session_id not in self.session_titles:
+        if normalized_title:
             self.session_titles[session_id] = normalized_title
         row = self.rows.get(session_id)
         if row is None:

@@ -113,6 +113,43 @@ class AppLifecycleTests(unittest.TestCase):
                 finally:
                     restored.close()
 
+    def test_session_panel_opacity_applies_and_persists(self) -> None:
+        qt_app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as temporary:
+            settings = QSettings(
+                str(Path(temporary) / "pet.ini"), QSettings.Format.IniFormat
+            )
+            with (
+                patch("desktop_pet.desktop_pet.QSettings", return_value=settings),
+                patch("desktop_pet.desktop_pet.keep_topmost"),
+            ):
+                pet = DesktopPet(load_spritesheet_config())
+                try:
+                    pet.show()
+                    pet.open_settings()
+                    panel = pet.settings_panel
+                    self.assertEqual(panel.session_opacity_spin.value(), 100)
+
+                    panel.session_opacity_slider.setValue(65)
+                    self.assertEqual(pet.session_opacity, 65)
+                    self.assertAlmostEqual(
+                        pet.session_panel.windowOpacity(), 0.65, delta=0.01
+                    )
+                    self.assertEqual(
+                        settings.value("session_panel_opacity", type=int), 65
+                    )
+                finally:
+                    pet.close()
+
+                restored = DesktopPet(load_spritesheet_config())
+                try:
+                    self.assertEqual(restored.session_opacity, 65)
+                    self.assertAlmostEqual(
+                        restored.session_panel.windowOpacity(), 0.65, delta=0.01
+                    )
+                finally:
+                    restored.close()
+
     def test_intro_setting_persists_and_disables_startup_playback(self) -> None:
         qt_app = QApplication.instance() or QApplication([])
         original_quit_setting = qt_app.quitOnLastWindowClosed()

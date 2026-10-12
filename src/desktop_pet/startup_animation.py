@@ -122,6 +122,8 @@ class StartupAnimation(QWidget):
         self._show_next_frame()
 
     def _show_next_frame(self) -> None:
+        if self.config is None:
+            return
         if self.clock.isValid():
             elapsed_frame = int(self.clock.elapsed() * self.config.fps / 1000)
             self.frame_index = max(self.frame_index, elapsed_frame)

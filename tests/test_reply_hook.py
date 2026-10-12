@@ -6,7 +6,7 @@ import socket
 import unittest
 from unittest.mock import patch
 
-from desktop_pet.hook_bridge import CODEX_EVENTS, HOST, MAX_REPLY_CHARS, completion_preview, event_for_hook, reply_preview, send_event
+from desktop_pet.hook_bridge import CODEX_EVENTS, HOST, MAX_REPLY_CHARS, MAX_SESSION_TITLE_CHARS, completion_preview, event_for_hook, prompt_with_working_directory, reply_preview, send_event
 from desktop_pet.hook_listener import HookListener
 
 
@@ -92,6 +92,7 @@ class ReplyHookTests(unittest.TestCase):
                 "hook_event_name": "UserPromptSubmit",
                 "session_id": "session-a",
                 "turn_id": "turn-1",
+                "cwd": r"D:\codex_desktop_pet",
                 "prompt": "  幫我寫一個\n桌寵狀態面板，再加入來源辨識功能  ",
             }, ensure_ascii=False).encode("utf-8")
             with (
@@ -103,14 +104,29 @@ class ReplyHookTests(unittest.TestCase):
             packet, _ = receiver.recvfrom(4096)
         payload = json.loads(packet.decode("utf-8"))
         self.assertEqual(payload["event"], "turn.started")
-        self.assertEqual(payload["message"], "幫我寫一個 桌寵狀態面板，再加入來源辨識功能"[:24])
+        self.assertEqual(
+            payload["message"],
+            "codex_desktop_pet > 幫我寫一個 桌寵狀態面板，再加入來源辨識功能",
+        )
+
+    def test_prompt_working_directory_prefix_uses_leaf_directory(self) -> None:
+        self.assertEqual(
+            prompt_with_working_directory("請修改功能", "C:\\Project\\codex_desktop_pet\\"),
+            "codex_desktop_pet > 請修改功能",
+        )
+        self.assertEqual(prompt_with_working_directory("請修改功能", ""), "請修改功能")
 
     def test_long_session_title_preview_has_three_dots(self) -> None:
         from desktop_pet.hook_bridge import session_title_preview
 
-        self.assertEqual(session_title_preview("A" * 24), "A" * 24)
-        self.assertEqual(session_title_preview("A" * 25), "A" * 25)
-        self.assertEqual(session_title_preview("A" * 26), "A" * 25 + "...")
+        self.assertEqual(
+            session_title_preview("A" * MAX_SESSION_TITLE_CHARS),
+            "A" * MAX_SESSION_TITLE_CHARS,
+        )
+        self.assertEqual(
+            session_title_preview("A" * (MAX_SESSION_TITLE_CHARS + 1)),
+            "A" * MAX_SESSION_TITLE_CHARS + "...",
+        )
 
     def test_stop_hook_sends_first_100_characters(self) -> None:
         from desktop_pet.hook_bridge import main

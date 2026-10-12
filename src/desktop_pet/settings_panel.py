@@ -31,6 +31,7 @@ from desktop_pet.hook_install import install_hooks
 class SettingsPanel(QDialog):
     scale_changed = Signal(int)
     fps_changed = Signal(int)
+    session_opacity_changed = Signal(int)
     session_offset_changed = Signal(int, int)
     play_intro_changed = Signal(bool)
     stop_requested = Signal()
@@ -41,7 +42,7 @@ class SettingsPanel(QDialog):
 
     def __init__(
         self, scale: int, fps: int, preview: QPixmap, play_intro: bool = True,
-        session_x: int = 0, session_y: int = 0,
+        session_x: int = 0, session_y: int = 0, session_opacity: int = 100,
     ):
         super().__init__()
         self.setWindowTitle("桌寵設定")
@@ -155,8 +156,18 @@ class SettingsPanel(QDialog):
         self.fps_slider, self.fps_spin = self._add_setting(
             root, "動畫速度", "每秒播放的畫格數", " FPS", 4, 60, fps
         )
+        self.session_opacity_slider, self.session_opacity_spin = self._add_setting(
+            root,
+            "Session 區域透明度",
+            "調整工作狀態視窗的透明程度",
+            "%",
+            10,
+            100,
+            session_opacity,
+        )
         self.scale_slider.valueChanged.connect(self.scale_changed)
         self.fps_slider.valueChanged.connect(self.fps_changed)
+        self.session_opacity_slider.valueChanged.connect(self.session_opacity_changed)
 
         position_card = QFrame()
         position_card.setObjectName("settingCard")
