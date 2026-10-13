@@ -49,7 +49,7 @@ uv run python install_codex_hooks.py
 
 ## 連接其他工具
 
-桌寵啟動後，可以讓其他專案的 Hook 呼叫共用的 `pet-hook` 指令。在「設定 → Hook 設定」按「將 pet-hook 加入使用者 PATH」，重新開啟要呼叫它的工具，再執行 `pet-hook --help` 確認指令可用。此按鈕只更新目前使用者的 PATH，不會改動其他工具的設定。
+桌寵啟動後，可以讓其他專案的 Hook 呼叫共用的 `pet-hook` 指令。在「設定 → Hook 設定」按「將 pet-hook 加入使用者 PATH」，重新開啟要呼叫它的工具，再執行 `pet-hook` 或 `pet-hook --help` 查看使用說明。此按鈕只更新目前使用者的 PATH，不會改動其他工具的設定。
 
 例如在工具開始工作時呼叫：
 

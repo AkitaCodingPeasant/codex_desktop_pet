@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -17,6 +19,17 @@ from desktop_pet import cli_path  # noqa: E402
 
 
 class SharedCliTests(unittest.TestCase):
+    def test_no_arguments_prints_help_without_error(self) -> None:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(pet_hook.main([]), 0)
+        self.assertIn("usage: pet-hook", output.getvalue())
+        self.assertIn("turn.started", output.getvalue())
+        self.assertIn("--session-id", output.getvalue())
+        self.assertIn("範例（CMD）：", output.getvalue())
+        self.assertIn("pet-hook tool.started", output.getvalue())
+        self.assertIn("pet-hook turn.completed", output.getvalue())
+
     def test_cli_sends_separate_title_and_message(self) -> None:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
             receiver.bind((pet_hook.HOST, 0))

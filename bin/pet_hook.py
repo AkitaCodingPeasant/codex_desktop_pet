@@ -45,13 +45,30 @@ def build_packet(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="將其他工具的 Hook 事件送至本機桌寵。"
+        prog="pet-hook",
+        description="將其他工具的 Hook 事件送至本機桌寵。",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "範例（CMD）：\n"
+            "  pet-hook turn.started --title \"VideoTool\" --message \"正在產生影片\" "
+            "--session-id video:project-a --turn-id job-001\n"
+            "  pet-hook tool.started --session-id video:project-a --turn-id job-001\n"
+            "  pet-hook turn.in_progress --session-id video:project-a --turn-id job-001\n"
+            "  pet-hook turn.completed --message \"影片處理完成\" "
+            "--session-id video:project-a --turn-id job-001\n"
+            "\n--title 可省略；同一回合請沿用相同的 session-id 與 turn-id。"
+        ),
     )
     parser.add_argument("event", choices=EVENTS, help="桌寵事件名稱")
     parser.add_argument("--title", default="", help="工作清單標題，可省略")
     parser.add_argument("--message", default="", help="工作訊息或完成回覆")
     parser.add_argument("--session-id", required=True, help="工具的工作階段 ID")
     parser.add_argument("--turn-id", default="", help="本次工作的回合 ID")
+    if argv is None:
+        argv = sys.argv[1:]
+    if not argv:
+        parser.print_help()
+        return 0
     args = parser.parse_args(argv)
     if not args.session_id.strip():
         parser.error("--session-id 不可為空")
