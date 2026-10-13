@@ -104,11 +104,10 @@ def session_title_preview(prompt: str) -> str:
     return title
 
 
-def prompt_with_working_directory(prompt: str, working_directory: str) -> str:
+def working_directory_title(working_directory: str) -> str:
     if not working_directory.strip():
-        return prompt
-    directory_name = ntpath.basename(ntpath.normpath(working_directory))
-    return f"{directory_name} > {prompt}" if directory_name else prompt
+        return ""
+    return ntpath.basename(ntpath.normpath(working_directory))
 
 
 def completion_preview(message: str) -> str:
@@ -138,7 +137,11 @@ def completion_preview(message: str) -> str:
 
 
 def send_event(
-    event_name: str, message: str = "", session_id: str = "", turn_id: str = ""
+    event_name: str,
+    message: str = "",
+    session_id: str = "",
+    turn_id: str = "",
+    title: str = "",
 ) -> None:
     if event_name not in PET_EVENTS:
         raise ValueError(f"Unknown pet event: {event_name}")
@@ -150,6 +153,7 @@ def send_event(
     packet = json.dumps(
         {
             "event": event_name,
+            "title": session_title_preview(title),
             "message": preview,
             "session_id": session_id,
             "turn_id": turn_id,
@@ -176,11 +180,11 @@ def main() -> None:
                 else payload.get("prompt") if hook_name == "UserPromptSubmit"
                 else None
             )
-            if hook_name == "UserPromptSubmit" and isinstance(message, str):
+            title = ""
+            if hook_name == "UserPromptSubmit":
                 working_directory = payload.get("cwd")
-                message = prompt_with_working_directory(
-                    message,
-                    working_directory if isinstance(working_directory, str) else os.getcwd(),
+                title = working_directory_title(
+                    working_directory if isinstance(working_directory, str) else os.getcwd()
                 )
             session_id = payload.get("session_id")
             turn_id = payload.get("turn_id")
@@ -189,6 +193,7 @@ def main() -> None:
                 message if isinstance(message, str) else "",
                 session_id if isinstance(session_id, str) else "",
                 turn_id if isinstance(turn_id, str) else "",
+                title,
             )
     except (OSError, ValueError, TypeError, AttributeError):
         # A desktop notification must never alter the Codex turn.

@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from desktop_pet.hook_bridge import CODEX_EVENTS, HOST, MAX_REPLY_CHARS, MAX_SESSION_TITLE_CHARS, completion_preview, event_for_hook, prompt_with_working_directory, reply_preview, send_event, should_ignore_hook
+from desktop_pet.hook_bridge import CODEX_EVENTS, HOST, MAX_REPLY_CHARS, MAX_SESSION_TITLE_CHARS, completion_preview, event_for_hook, reply_preview, send_event, should_ignore_hook, working_directory_title
 from desktop_pet.hook_listener import HookListener
 
 
@@ -56,6 +56,7 @@ class ReplyHookTests(unittest.TestCase):
             packet, _ = receiver.recvfrom(4096)
         self.assertEqual(json.loads(packet.decode("utf-8")), {
             "event": "user_input_requested",
+            "title": "",
             "message": "",
             "session_id": "session-a",
             "turn_id": "turn-a",
@@ -167,17 +168,15 @@ class ReplyHookTests(unittest.TestCase):
             packet, _ = receiver.recvfrom(4096)
         payload = json.loads(packet.decode("utf-8"))
         self.assertEqual(payload["event"], "turn.started")
-        self.assertEqual(
-            payload["message"],
-            "codex_desktop_pet > 幫我寫一個 桌寵狀態面板，再加入來源辨識功能",
-        )
+        self.assertEqual(payload["title"], "codex_desktop_pet")
+        self.assertEqual(payload["message"], "幫我寫一個 桌寵狀態面板，再加入來源辨識功能")
 
-    def test_prompt_working_directory_prefix_uses_leaf_directory(self) -> None:
+    def test_working_directory_title_uses_leaf_directory(self) -> None:
         self.assertEqual(
-            prompt_with_working_directory("請修改功能", "C:\\Project\\codex_desktop_pet\\"),
-            "codex_desktop_pet > 請修改功能",
+            working_directory_title("C:\\Project\\codex_desktop_pet\\"),
+            "codex_desktop_pet",
         )
-        self.assertEqual(prompt_with_working_directory("請修改功能", ""), "請修改功能")
+        self.assertEqual(working_directory_title(""), "")
 
     def test_long_session_title_preview_has_three_dots(self) -> None:
         from desktop_pet.hook_bridge import session_title_preview
@@ -261,14 +260,21 @@ class ReplyHookTests(unittest.TestCase):
             port = temporary.getsockname()[1]
         with patch.object(bridge, "PORT", port), patch.object(listener_module, "PORT", port):
             listener = HookListener()
-            events: list[tuple[str, str, str, str]] = []
+            events: list[tuple[str, str, str, str, str]] = []
             listener.event_received.connect(
-                lambda event, message, session, turn: events.append((event, message, session, turn))
+                lambda event, message, session, turn, title: events.append(
+                    (event, message, session, turn, title)
+                )
             )
             try:
-                send_event("turn.completed", "**回覆內容**", "session-a", "turn-a")
+                send_event(
+                    "turn.completed", "**回覆內容**", "session-a", "turn-a", "MyTool"
+                )
                 listener._receive_pending()
-                self.assertEqual(events, [("turn.completed", "回覆內容", "session-a", "turn-a")])
+                self.assertEqual(
+                    events,
+                    [("turn.completed", "回覆內容", "session-a", "turn-a", "MyTool")],
+                )
                 send_event(
                     "turn.completed",
                     "甲" * 120 + "\n更動 3 個檔案，新增 18 行，刪除 5 行",
@@ -279,6 +285,19 @@ class ReplyHookTests(unittest.TestCase):
                 self.assertEqual(
                     events[-1][1],
                     "甲" * 100 + "...\n已變更 3 個檔案 +18 -5",
+                )
+                legacy_packet = json.dumps({
+                    "event": "turn.started",
+                    "message": "舊版訊息",
+                    "session_id": "legacy-session",
+                    "turn_id": "legacy-turn",
+                }, ensure_ascii=False).encode("utf-8")
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+                    sender.sendto(legacy_packet, (HOST, port))
+                listener._receive_pending()
+                self.assertEqual(
+                    events[-1],
+                    ("turn.started", "舊版訊息", "legacy-session", "legacy-turn", ""),
                 )
             finally:
                 listener.close()

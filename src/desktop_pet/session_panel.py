@@ -169,7 +169,7 @@ class SessionRow(QFrame):
         self.status_dot = StatusDot()
         self.dismiss_button = DismissButton()
         self.dismiss_button.setObjectName("dismissSession")
-        self.dismiss_button.setToolTip("移除這則已結束的通知")
+        self.dismiss_button.setToolTip("隱藏這個 Session")
         self.dismiss_button.setFixedSize(20, 20)
         self.dismiss_button.setEnabled(False)
         self.dismiss_button.clicked.connect(lambda: self.dismiss_requested.emit(self.session_id))
@@ -192,7 +192,10 @@ class SessionRow(QFrame):
             color = "#3998d8"
         self.status_dot.set_color(color)
         self.terminal = terminal
-        self.dismiss_button.setEnabled(terminal)
+        self.dismiss_button.setEnabled(True)
+        self.dismiss_button.setToolTip(
+            "移除這則已結束的通知" if terminal else "隱藏這個 Session"
+        )
 
     def set_turn_id(self, turn_id: str) -> None:
         self.turn_id = turn_id
@@ -278,6 +281,7 @@ class WidthResizeHandle(QWidget):
 
 class TurnPanel(QWidget):
     width_changed = Signal(int)
+    session_hidden_changed = Signal(str, bool)
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
@@ -293,6 +297,8 @@ class TurnPanel(QWidget):
         self.rows: dict[str, SessionRow] = {}
         self.session_numbers: dict[str, int] = {}
         self.session_titles: dict[str, str] = {}
+        self.session_states: dict[str, tuple[str, str, bool]] = {}
+        self.hidden_sessions: set[str] = set()
         self.next_number = 1
 
         outer = QVBoxLayout(self)
@@ -360,6 +366,9 @@ class TurnPanel(QWidget):
         normalized_title = " ".join(title.split())
         if normalized_title:
             self.session_titles[session_id] = normalized_title
+        self.session_states[session_id] = (turn_id, status, terminal)
+        if session_id in self.hidden_sessions:
+            return
         row = self.rows.get(session_id)
         if row is None:
             if session_id not in self.session_numbers:
@@ -378,15 +387,51 @@ class TurnPanel(QWidget):
 
     def dismiss_session(self, session_id: str) -> None:
         row = self.rows.get(session_id)
-        if row is None or not row.terminal:
+        if row is None:
             return
+        if not row.terminal:
+            self.hidden_sessions.add(session_id)
         del self.rows[session_id]
         self.list_layout.removeWidget(row)
         row.deleteLater()
         self.empty_label.setVisible(not self.rows)
         self._resize_for_rows()
+        if session_id in self.hidden_sessions:
+            self.session_hidden_changed.emit(session_id, True)
+
+    def restore_session(self, session_id: str) -> None:
+        if session_id not in self.hidden_sessions:
+            return
+        self.hidden_sessions.remove(session_id)
+        state = self.session_states.get(session_id)
+        if state is not None:
+            turn_id, status, terminal = state
+            self.set_turn(
+                (session_id, turn_id),
+                status,
+                terminal,
+                self.session_titles.get(session_id, ""),
+            )
+        self.session_hidden_changed.emit(session_id, False)
+
+    def hidden_session_items(self) -> list[tuple[str, str]]:
+        def sort_key(session_id: str) -> int:
+            return self.session_numbers.get(session_id, 0)
+
+        return [
+            (
+                session_id,
+                self.session_titles.get(session_id)
+                or f"Session {self.session_numbers.get(session_id, '?')}",
+            )
+            for session_id in sorted(self.hidden_sessions, key=sort_key)
+        ]
 
     def end_session(self, session_id: str) -> None:
+        state = self.session_states.get(session_id)
+        if state is not None:
+            turn_id, _, _ = state
+            self.session_states[session_id] = (turn_id, "已結束", True)
         row = self.rows.get(session_id)
         if row is not None and not row.terminal:
             row.set_status("已結束", True)

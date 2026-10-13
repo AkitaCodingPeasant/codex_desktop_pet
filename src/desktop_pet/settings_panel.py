@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSlider,
     QSpinBox,
     QStackedWidget,
@@ -36,6 +37,7 @@ class SettingsPanel(QDialog):
     play_intro_changed = Signal(bool)
     stop_requested = Signal()
     hook_test_requested = Signal(str, str, str, str)
+    restore_session_requested = Signal(str)
 
     session_x_spin: QSpinBox
     session_y_spin: QSpinBox
@@ -70,9 +72,15 @@ class SettingsPanel(QDialog):
         navigation.addWidget(navigation_title)
         navigation.addSpacing(18)
         self.settings_button = QPushButton("設定")
+        self.hidden_sessions_button = QPushButton("隱藏的 Session")
         self.hook_button = QPushButton("Hook 測試")
         self.hook_settings_button = QPushButton("Hook 設定")
-        for button in (self.settings_button, self.hook_button, self.hook_settings_button):
+        for button in (
+            self.settings_button,
+            self.hidden_sessions_button,
+            self.hook_button,
+            self.hook_settings_button,
+        ):
             button.setObjectName("navigationButton")
             button.setCheckable(True)
             navigation.addWidget(button)
@@ -84,6 +92,7 @@ class SettingsPanel(QDialog):
         self.settings_button.clicked.connect(lambda: self._show_page(0))
         self.hook_button.clicked.connect(lambda: self._show_page(1))
         self.hook_settings_button.clicked.connect(lambda: self._show_page(2))
+        self.hidden_sessions_button.clicked.connect(lambda: self._show_page(3))
 
         settings_page = QWidget()
         root = QVBoxLayout(settings_page)
@@ -294,6 +303,47 @@ class SettingsPanel(QDialog):
         hook_settings_layout.addWidget(self.hook_install_result)
         hook_settings_layout.addStretch()
         self.pages.addWidget(hook_settings_page)
+
+        hidden_page = QWidget()
+        hidden_layout = QVBoxLayout(hidden_page)
+        hidden_layout.setContentsMargins(28, 26, 28, 24)
+        hidden_layout.setSpacing(16)
+        hidden_eyebrow = QLabel("DESKTOP PET  /  HIDDEN SESSIONS")
+        hidden_eyebrow.setObjectName("eyebrow")
+        hidden_layout.addWidget(hidden_eyebrow)
+        hidden_title = QLabel("隱藏的 Session")
+        hidden_title.setObjectName("title")
+        hidden_layout.addWidget(hidden_title)
+        hidden_hint = QLabel(
+            "隱藏後仍會持續接收並追蹤訊息，但不顯示工作狀態或觸發動畫。"
+        )
+        hidden_hint.setObjectName("subtitle")
+        hidden_hint.setWordWrap(True)
+        hidden_layout.addWidget(hidden_hint)
+        self.hidden_sessions_count = QLabel("目前隱藏 0 個 Session")
+        self.hidden_sessions_count.setObjectName("statusValue")
+        hidden_layout.addWidget(self.hidden_sessions_count)
+        self.hidden_sessions_container = QWidget()
+        self.hidden_sessions_layout = QVBoxLayout(self.hidden_sessions_container)
+        self.hidden_sessions_layout.setContentsMargins(0, 0, 0, 0)
+        self.hidden_sessions_layout.setSpacing(8)
+        self.hidden_sessions_empty = QLabel("目前沒有被隱藏的 Session。")
+        self.hidden_sessions_empty.setObjectName("note")
+        self.hidden_sessions_layout.addWidget(self.hidden_sessions_empty)
+        self.hidden_sessions_layout.addStretch()
+        self.hidden_sessions_scroll = QScrollArea()
+        self.hidden_sessions_scroll.setWidgetResizable(True)
+        self.hidden_sessions_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.hidden_sessions_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.hidden_sessions_scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+        )
+        self.hidden_sessions_scroll.viewport().setStyleSheet("background: transparent;")
+        self.hidden_sessions_scroll.setWidget(self.hidden_sessions_container)
+        hidden_layout.addWidget(self.hidden_sessions_scroll, 1)
+        self.pages.addWidget(hidden_page)
         self._show_page(0)
 
         self.setStyleSheet("""
@@ -369,6 +419,54 @@ class SettingsPanel(QDialog):
         self.settings_button.setChecked(index == 0)
         self.hook_button.setChecked(index == 1)
         self.hook_settings_button.setChecked(index == 2)
+        self.hidden_sessions_button.setChecked(index == 3)
+
+    def set_hidden_sessions(self, sessions: list[tuple[str, str]]) -> None:
+        hidden_count = len(sessions)
+        self.hidden_sessions_button.setText(
+            f"隱藏的 Session"
+        )
+        self.hidden_sessions_count.setText(
+            f"目前隱藏 {hidden_count} 個 Session"
+        )
+        while self.hidden_sessions_layout.count() > 2:
+            item = self.hidden_sessions_layout.takeAt(1)
+            if item is not None:
+                widget = item.widget()
+            else:
+                widget = None
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        self.hidden_sessions_empty.setVisible(not sessions)
+        for session_id, title in sessions:
+            row = QFrame()
+            row.setObjectName("settingCard")
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(14, 10, 10, 10)
+            label = QLabel(title)
+            label.setToolTip(f"Session: {session_id}")
+            label.setTextFormat(Qt.TextFormat.PlainText)
+            label.setMinimumWidth(0)
+            label.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Preferred,
+            )
+            row_layout.addWidget(label, 1)
+            restore_button = QPushButton("恢復顯示")
+            restore_button.setObjectName("secondaryButton")
+            restore_button.setMinimumWidth(88)
+            restore_button.setSizePolicy(
+                QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Fixed,
+            )
+            restore_button.clicked.connect(
+                lambda checked=False, value=session_id: self.restore_session_requested.emit(value)
+            )
+            row_layout.addWidget(restore_button)
+            self.hidden_sessions_layout.insertWidget(
+                self.hidden_sessions_layout.count() - 1, row
+            )
 
     def _install_hooks(self) -> None:
         try:

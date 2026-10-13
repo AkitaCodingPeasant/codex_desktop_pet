@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from desktop_pet.config import load_spritesheet_config
 from desktop_pet.desktop_pet import DesktopPet
@@ -45,9 +45,8 @@ class TurnPanelTests(unittest.TestCase):
         self.assertEqual(panel.rows[first[0]].name_label.text(), "Session 1")
         self.assertEqual(panel.rows[second[0]].name_label.text(), "Session 2")
         self.assertEqual(panel.heading.text(), "SESSION 工作狀態")
-        self.assertFalse(panel.rows[first[0]].dismiss_button.isEnabled())
-        panel.dismiss_session(first[0])
-        self.assertIn(first[0], panel.rows)
+        self.assertTrue(panel.rows[first[0]].dismiss_button.isEnabled())
+        self.assertTrue(panel.rows[second[0]].dismiss_button.isEnabled())
 
         self.pet.handle_event("tool.started", session_id=first[0], turn_id=first[1])
         self.assertEqual(panel.rows[first[0]].status_label.text(), "調用工具中")
@@ -56,7 +55,7 @@ class TurnPanelTests(unittest.TestCase):
         self.pet.handle_event("turn.completed", session_id=first[0], turn_id=first[1])
         self.assertEqual(panel.rows[first[0]].status_label.text(), "已完成")
         self.assertTrue(panel.rows[first[0]].dismiss_button.isEnabled())
-        self.assertFalse(panel.rows[second[0]].dismiss_button.isEnabled())
+        self.assertTrue(panel.rows[second[0]].dismiss_button.isEnabled())
         panel.rows[first[0]].dismiss_button.click()
         self.assertNotIn(first[0], panel.rows)
         self.assertIn(second[0], panel.rows)
@@ -72,13 +71,89 @@ class TurnPanelTests(unittest.TestCase):
         self.assertEqual(len(panel.rows), 1)
         self.assertEqual(panel.rows["session-a"].name_label.text(), "Session 1")
         self.assertEqual(panel.rows["session-a"].status_label.text(), "思考中")
-        self.assertFalse(panel.rows["session-a"].dismiss_button.isEnabled())
+        self.assertTrue(panel.rows["session-a"].dismiss_button.isEnabled())
 
         self.pet.handle_event("turn.completed", session_id="session-a", turn_id="turn-2")
         self.assertEqual(panel.rows["session-a"].status_label.text(), "已完成")
         self.pet.handle_event("turn.started", session_id="session-a", turn_id="turn-3")
         self.assertEqual(len(panel.rows), 1)
         self.assertEqual(panel.rows["session-a"].name_label.text(), "Session 1")
+
+    def test_running_session_can_hide_without_triggering_later_events(self) -> None:
+        key = ("session-hidden", "turn-1")
+        self.pet.handle_event(
+            "turn.started", "請持續背景追蹤", key[0], key[1]
+        )
+        self.pet.handle_event("tool.started", session_id=key[0], turn_id=key[1])
+        self.assertEqual(self.pet.state, "working")
+        panel = self.pet.session_panel
+        panel.rows[key[0]].dismiss_button.click()
+
+        self.assertNotIn(key[0], panel.rows)
+        self.assertIn(key[0], panel.hidden_sessions)
+        self.assertIn(key, self.pet.active_turns)
+        self.assertEqual(self.pet.state, "idle")
+        self.assertFalse(self.pet.working_timer.isActive())
+
+        self.pet.handle_event("tool.started", session_id=key[0], turn_id=key[1])
+        self.assertEqual(self.pet.state, "idle")
+        self.assertFalse(self.pet.working_timer.isActive())
+        self.pet.handle_event("turn.in_progress", session_id=key[0], turn_id=key[1])
+        self.assertEqual(self.pet.state, "idle")
+        self.pet.handle_event("turn.completed", "隱藏的回覆", key[0], key[1])
+
+        self.assertEqual(self.pet.state, "idle")
+        self.assertFalse(self.pet.reply_bubble.isVisible())
+        self.assertEqual(panel.session_states[key[0]][1:], ("已完成", True))
+
+    def test_hidden_session_can_be_restored_from_settings_with_latest_status(self) -> None:
+        key = ("session-hidden", "turn-1")
+        self.pet.handle_event(
+            "turn.started", "原始工作", key[0], key[1]
+        )
+        self.pet.session_panel.rows[key[0]].dismiss_button.click()
+
+        self.pet.open_settings()
+        settings = self.pet.settings_panel
+        self.assertIsNotNone(settings)
+        assert settings is not None
+        settings.hidden_sessions_button.click()
+        self.assertEqual(settings.pages.currentIndex(), 3)
+        self.assertEqual(settings.active_count_value.text(), "0")
+        self.assertEqual(settings.hidden_sessions_button.text(), "隱藏的 Session")
+        self.assertEqual(settings.hidden_sessions_count.text(), "目前隱藏 1 個 Session")
+        self.pet.handle_event("action_required", session_id=key[0], turn_id=key[1])
+        settings.set_hidden_sessions([(key[0], "A" * 500)])
+        self.app.processEvents()
+        hidden_sessions_page = settings.pages.widget(3)
+        self.assertIsNotNone(hidden_sessions_page)
+        assert hidden_sessions_page is not None
+        restore_buttons = [
+            button
+            for button in hidden_sessions_page.findChildren(QPushButton)
+            if button.text() == "恢復顯示"
+        ]
+        self.assertEqual(len(restore_buttons), 1)
+        restore_button = restore_buttons[0]
+        button_position = restore_button.mapTo(
+            settings.hidden_sessions_scroll.viewport(), QPoint(0, 0)
+        )
+        self.assertTrue(restore_button.isVisible())
+        self.assertGreaterEqual(button_position.x(), 0)
+        self.assertLessEqual(
+            button_position.x() + restore_button.width(),
+            settings.hidden_sessions_scroll.viewport().width(),
+        )
+        restore_button.click()
+
+        row = self.pet.session_panel.rows[key[0]]
+        self.assertEqual(row.status_label.text(), "等待授權")
+        self.assertEqual(row.title, "原始工作")
+        self.assertNotIn(key[0], self.pet.session_panel.hidden_sessions)
+        self.assertEqual(self.pet.state, "asking")
+        self.assertEqual(settings.active_count_value.text(), "1")
+        self.assertEqual(settings.hidden_sessions_button.text(), "隱藏的 Session（0）")
+        self.assertEqual(settings.hidden_sessions_count.text(), "目前隱藏 0 個 Session")
 
     def test_session_title_updates_to_latest_prompt(self) -> None:
         self.pet.handle_event(
@@ -108,14 +183,27 @@ class TurnPanelTests(unittest.TestCase):
     def test_working_directory_prefix_uses_directory_style(self) -> None:
         self.pet.handle_event(
             "turn.started",
-            "codex_desktop_pet > 請調整顯示樣式",
+            "請調整顯示樣式",
             "session-a",
             "turn-1",
+            "codex_desktop_pet",
         )
         label = self.pet.session_panel.rows["session-a"].name_label
         self.assertEqual(label.text(), "codex_desktop_pet > 請調整顯示樣式")
         self.assertEqual(label.directory_prefix, "codex_desktop_pet")
         self.assertEqual(label.DIRECTORY_COLOR.name(), "#4E9426")
+
+    def test_empty_event_title_does_not_render_separator(self) -> None:
+        self.pet.handle_event(
+            "turn.started",
+            "正在產生影片",
+            "session-a",
+            "turn-1",
+            "",
+        )
+        label = self.pet.session_panel.rows["session-a"].name_label
+        self.assertEqual(label.text(), "正在產生影片")
+        self.assertNotIn(">", label.text())
 
     def test_long_session_title_ends_with_three_dots(self) -> None:
         title = "A" * 26

@@ -225,6 +225,7 @@ class DesktopPet(QWidget):
         self.finished_turns: set[tuple[str, str]] = set()
         self.current_turns: dict[str, str] = {}
         self.pending_results: list[tuple[str, str]] = []
+        self.working_timer_turns: set[tuple[str, str]] = set()
         self.clip_queue: list[str] = []
         self.repeat_clip: str | None = None
         self.repeats_left: int | None = None
@@ -265,6 +266,9 @@ class DesktopPet(QWidget):
         ))
         self.session_panel.width_changed.connect(
             lambda width: self.settings.setValue("session_panel_width", width)
+        )
+        self.session_panel.session_hidden_changed.connect(
+            self._on_session_hidden_changed
         )
         self.reply_timer = QTimer(self)
         self.reply_timer.setSingleShot(True)
@@ -354,9 +358,11 @@ class DesktopPet(QWidget):
             panel.play_intro_changed.connect(self.set_play_intro)
             panel.session_offset_changed.connect(self.set_session_offset)
             panel.hook_test_requested.connect(send_event)
+            panel.restore_session_requested.connect(self.session_panel.restore_session)
             panel.stop_requested.connect(QApplication.quit)
             self.settings_panel = panel
         self._update_panel_status()
+        self._update_hidden_sessions_panel()
         self.settings_panel.show()
         self.settings_panel.raise_()
         self.settings_panel.activateWindow()
@@ -477,14 +483,60 @@ class DesktopPet(QWidget):
 
     def _update_panel_status(self) -> None:
         if self.settings_panel is not None:
-            self.settings_panel.set_work_status(self.status_text, len(self.active_turns))
+            self.settings_panel.set_work_status(
+                self.status_text,
+                sum(
+                    key[0] not in self.session_panel.hidden_sessions
+                    for key in self.active_turns
+                ),
+            )
+
+    def _update_hidden_sessions_panel(self) -> None:
+        if self.settings_panel is not None:
+            self.settings_panel.set_hidden_sessions(
+                self.session_panel.hidden_session_items()
+            )
+
+    def _on_session_hidden_changed(self, session_id: str, hidden: bool) -> None:
+        if hidden:
+            self.working_timer_turns = {
+                key for key in self.working_timer_turns if key[0] != session_id
+            }
+            if not self.working_timer_turns:
+                self.working_timer.stop()
+        self._update_hidden_sessions_panel()
+        if self.state == "result":
+            self._update_panel_status()
+            return
+        visible_turns = {
+            key: status
+            for key, status in self.active_turns.items()
+            if key[0] not in self.session_panel.hidden_sessions
+        }
+        if visible_turns:
+            self._play_active_state()
+        else:
+            self._next_idle()
+        self._position_session_panel()
 
     def _play_active_state(self) -> None:
-        asking = any(status in {"asking", "asking_user"} for status in self.active_turns.values())
-        working = any(self.active_tool_counts.values()) or self.working_timer.isActive()
+        visible_turns = {
+            key: status
+            for key, status in self.active_turns.items()
+            if key[0] not in self.session_panel.hidden_sessions
+        }
+        asking = any(status in {"asking", "asking_user"} for status in visible_turns.values())
+        working = any(
+            count
+            for key, count in self.active_tool_counts.items()
+            if key[0] not in self.session_panel.hidden_sessions
+        ) or any(
+            key[0] not in self.session_panel.hidden_sessions
+            for key in self.working_timer_turns
+        )
         target = "asking" if asking else "working" if working else "thinking"
         self.status_text = (
-            "等待授權" if "asking" in self.active_turns.values()
+            "等待授權" if "asking" in visible_turns.values()
             else "等待回覆" if asking else "操作工具中" if working else "調用工具中"
         )
         self._update_panel_status()
@@ -505,9 +557,13 @@ class DesktopPet(QWidget):
             self._play_active_state()
 
     def _finish_working_window(self) -> None:
+        self.working_timer_turns.clear()
         if self.state == "result":
             return
-        if self.active_turns:
+        if any(
+            key[0] not in self.session_panel.hidden_sessions
+            for key in self.active_turns
+        ):
             self._play_active_state()
         else:
             self._next_idle()
@@ -533,7 +589,10 @@ class DesktopPet(QWidget):
     def _finish_result(self) -> None:
         if self.pending_results:
             self._start_next_result()
-        elif self.active_turns:
+        elif any(
+            key[0] not in self.session_panel.hidden_sessions
+            for key in self.active_turns
+        ):
             self.reply_timer.stop()
             self.reply_bubble.hide()
             self._play_active_state()
@@ -541,9 +600,15 @@ class DesktopPet(QWidget):
             self._next_idle()
 
     def handle_event(
-        self, event_name: str, message: str = "", session_id: str = "", turn_id: str = ""
+        self,
+        event_name: str,
+        message: str = "",
+        session_id: str = "",
+        turn_id: str = "",
+        title: str = "",
     ) -> None:
         key = (session_id, turn_id)
+        hidden = session_id in self.session_panel.hidden_sessions
         if session_id and turn_id and event_name != "turn.started":
             current_turn = self.current_turns.get(session_id)
             if current_turn is not None and current_turn != turn_id:
@@ -560,8 +625,11 @@ class DesktopPet(QWidget):
                 key,
                 EVENT_STATUSES[event_name],
                 event_name in TERMINAL_STATUSES,
-                message if event_name == "turn.started" else "",
+                self._turn_display_title(title, message)
+                if event_name == "turn.started" else "",
             )
+        if hidden:
+            self._update_hidden_sessions_panel()
         self._position_session_panel()
         if event_name == "turn.started":
             if session_id and turn_id:
@@ -581,39 +649,64 @@ class DesktopPet(QWidget):
                 for active_key, count in self.active_tool_counts.items()
                 if active_key[0] != session_id
             }
+            self.working_timer_turns = {
+                active_key
+                for active_key in self.working_timer_turns
+                if active_key[0] != session_id
+            }
             self.active_turns[key] = "thinking"
-            if self.state != "result":
+            if not hidden and self.state != "result":
                 self.reply_timer.stop()
                 self.reply_bubble.hide()
-            self._refresh_active_state()
+            if not hidden:
+                self._refresh_active_state()
+            else:
+                self._update_panel_status()
         elif event_name == "tool.started":
             if self.active_turns.get(key) != "asking":
                 self.active_turns[key] = "thinking"
             self.active_tool_counts[key] = self.active_tool_counts.get(key, 0) + 1
-            self.working_timer.start(2000)
-            if self.state != "result":
+            if not hidden:
+                self.working_timer_turns.add(key)
+                self.working_timer.start(2000)
+            if not hidden and self.state != "result":
                 self.reply_timer.stop()
                 self.reply_bubble.hide()
-            self._refresh_active_state()
+            if not hidden:
+                self._refresh_active_state()
+            else:
+                self._update_panel_status()
         elif event_name == "turn.in_progress":
             self.active_turns[key] = "thinking"
             if key in self.active_tool_counts:
                 self.active_tool_counts[key] -= 1
                 if self.active_tool_counts[key] <= 0:
                     del self.active_tool_counts[key]
-            if self.state != "result":
+            if not hidden and self.state != "result":
                 self.reply_timer.stop()
                 self.reply_bubble.hide()
-            self._refresh_active_state()
+            if not hidden:
+                self._refresh_active_state()
+            else:
+                self._update_panel_status()
         elif event_name == "user_input_completed":
             self.active_turns[key] = "thinking"
-            self._refresh_active_state()
+            if not hidden:
+                self._refresh_active_state()
+            else:
+                self._update_panel_status()
         elif event_name == "action_required":
             self.active_turns[key] = "asking"
-            self._refresh_active_state()
+            if not hidden:
+                self._refresh_active_state()
+            else:
+                self._update_panel_status()
         elif event_name == "user_input_requested":
             self.active_turns[key] = "asking_user"
-            self._refresh_active_state()
+            if not hidden:
+                self._refresh_active_state()
+            else:
+                self._update_panel_status()
         elif event_name in RESULT_CLIPS:
             if key in self.finished_turns:
                 return
@@ -623,13 +716,18 @@ class DesktopPet(QWidget):
                     self.finished_turns.pop()
             self.active_turns.pop(key, None)
             self.active_tool_counts.pop(key, None)
+            self.working_timer_turns.discard(key)
             if not self.active_tool_counts:
                 self.working_timer.stop()
-            self.pending_results.append((event_name, message))
-            if self.state == "result":
+                self.working_timer_turns.clear()
+            if hidden:
                 self._update_panel_status()
             else:
-                self._start_next_result()
+                self.pending_results.append((event_name, message))
+                if self.state == "result":
+                    self._update_panel_status()
+                else:
+                    self._start_next_result()
         elif event_name == "session.ended":
             previous_turn = self.current_turns.pop(session_id, None)
             if previous_turn:
@@ -644,14 +742,31 @@ class DesktopPet(QWidget):
                 for active_key, count in self.active_tool_counts.items()
                 if active_key[0] != session_id
             }
+            self.working_timer_turns = {
+                active_key
+                for active_key in self.working_timer_turns
+                if active_key[0] != session_id
+            }
             if not self.active_tool_counts:
                 self.working_timer.stop()
+                self.working_timer_turns.clear()
             if self.state == "result":
                 self._update_panel_status()
-            elif self.active_turns:
+            elif any(
+                active_key[0] not in self.session_panel.hidden_sessions
+                for active_key in self.active_turns
+            ):
                 self._play_active_state()
             else:
                 self._next_idle()
+
+    @staticmethod
+    def _turn_display_title(title: str, message: str) -> str:
+        normalized_title = " ".join(title.split())
+        normalized_message = " ".join(message.split())
+        if normalized_title and normalized_message:
+            return f"{normalized_title} > {normalized_message}"
+        return normalized_title or normalized_message
 
     def _play_sequence(
         self, clips: tuple[str, ...], repeat: str | None = None, repeats: int | None = None

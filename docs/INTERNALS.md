@@ -8,6 +8,20 @@
 
 Codex Hook 由 `hook_bridge.py` 接收事件並轉換成桌寵事件，再透過本機 UDP `127.0.0.1:49377` 傳給 `hook_listener.py`。桌寵可在沒有 Hook 的情況下獨立執行。
 
+其他工具也可以直接送出 UTF-8 JSON UDP 封包。共用格式如下：
+
+```json
+{
+  "event": "turn.started",
+  "title": "MyTool",
+  "message": "正在產生影片",
+  "session_id": "mytool:project-123",
+  "turn_id": "job-456"
+}
+```
+
+`title` 可以省略或留空；只有 `title` 與 `message` 皆有內容時，工作清單才會顯示為 `title > message`。不同工具應在 `session_id` 加入來源前綴，並讓同一回合的所有事件使用相同的 `session_id` 與 `turn_id`。
+
 ## Codex Hook 安裝
 
 使用者可從設定面板的「Hook 設定」頁安裝，也可在專案根目錄執行：
