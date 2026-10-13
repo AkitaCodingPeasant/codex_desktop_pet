@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import QPoint, QRect, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QSignalBlocker, QPoint, QRect, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -239,7 +239,9 @@ class DesktopPet(QWidget):
         self.play_intro = cast(
             bool, self.settings.value("play_intro", True, type=bool)
         )
-        self.session_offset = self._saved_session_offset()
+        self.session_panel_left = cast(
+            bool, self.settings.value("session_panel_left", False, type=bool)
+        )
         self.settings_panel: SettingsPanel | None = None
         self.context_menu: QMenu | None = None
 
@@ -264,6 +266,7 @@ class DesktopPet(QWidget):
         self.session_panel.set_panel_width(self._saved_number(
             "session_panel_width", DEFAULT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_WIDTH
         ))
+        self.session_offset = self._saved_session_offset()
         self.session_panel.width_changed.connect(
             lambda width: self.settings.setValue("session_panel_width", width)
         )
@@ -304,7 +307,15 @@ class DesktopPet(QWidget):
         x = self.settings.value("session_panel_offset_x")
         y = self.settings.value("session_panel_offset_y")
         try:
-            return QPoint(int(x), int(y)) if x is not None and y is not None else None
+            if x is None or y is None:
+                return None
+            offset_x = int(x)
+            offset_y = int(y)
+            if not self.settings.value("session_panel_offset_centered", False, type=bool):
+                offset_x += self.session_panel.width() // 2 - self.width() // 2
+                self.settings.setValue("session_panel_offset_x", offset_x)
+                self.settings.setValue("session_panel_offset_centered", True)
+            return QPoint(offset_x, offset_y)
         except (TypeError, ValueError, OverflowError):
             return None
 
@@ -339,7 +350,26 @@ class DesktopPet(QWidget):
         self.session_offset = QPoint(x, y)
         self.settings.setValue("session_panel_offset_x", x)
         self.settings.setValue("session_panel_offset_y", y)
+        self.settings.setValue("session_panel_offset_centered", True)
         self._position_session_panel()
+
+    def _session_horizontal_offset(self) -> int:
+        if self.session_offset is not None:
+            return self.session_offset.x()
+        gap = 8
+        default_x = self.width() // 2 + self.session_panel.width() // 2 + gap
+        return -default_x if self.session_panel_left else default_x
+
+    def swap_session_panel_side(self) -> None:
+        offset_x = self._session_horizontal_offset()
+        self.session_panel_left = not self.session_panel_left
+        self.settings.setValue("session_panel_left", self.session_panel_left)
+        offset_y = self.session_offset.y() if self.session_offset is not None else 0
+        self.set_session_offset(-offset_x, offset_y)
+        if self.settings_panel is not None:
+            assert self.session_offset is not None
+            with QSignalBlocker(self.settings_panel.session_x_spin):
+                self.settings_panel.session_x_spin.setValue(self.session_offset.x())
 
     def open_settings(self) -> None:
         if self.settings_panel is None:
@@ -348,7 +378,7 @@ class DesktopPet(QWidget):
             )
             panel = SettingsPanel(
                 self.scale_percent, self.fps, preview, self.play_intro,
-                self.session_panel.x() - self.x(),
+                self._session_horizontal_offset(),
                 self.session_panel.y() - self.y(),
                 self.session_opacity,
             )
@@ -431,23 +461,16 @@ class DesktopPet(QWidget):
         if screen is None:
             return
         area = screen.availableGeometry()
-        if self.session_offset is not None:
-            x = self.x() + self.session_offset.x()
-            if x < area.left() or x + self.session_panel.width() > area.right() + 1:
-                x = self.x() + self.width() - self.session_offset.x() - self.session_panel.width()
-            x = max(area.left(), min(x, area.right() - self.session_panel.width() + 1))
-            y = max(
-                area.top(),
-                min(self.y() + self.session_offset.y(), area.bottom() - self.session_panel.height() + 1),
-            )
-            self.session_panel.move(x, y)
-            return
-        gap = 8
-        right_x = self.x() + self.width() + gap
-        left_x = self.x() - self.session_panel.width() - gap
-        x = right_x if right_x + self.session_panel.width() <= area.right() + 1 else left_x
+        offset_x = self._session_horizontal_offset()
+        center_x = self.x() + self.width() // 2
+        x = center_x + offset_x - self.session_panel.width() // 2
+        if x < area.left() or x + self.session_panel.width() > area.right() + 1:
+            mirrored_x = center_x - offset_x - self.session_panel.width() // 2
+            if area.left() <= mirrored_x and mirrored_x + self.session_panel.width() <= area.right() + 1:
+                x = mirrored_x
         x = max(area.left(), min(x, area.right() - self.session_panel.width() + 1))
-        y = max(area.top(), min(self.y(), area.bottom() - self.session_panel.height() + 1))
+        offset_y = self.session_offset.y() if self.session_offset is not None else 0
+        y = max(area.top(), min(self.y() + offset_y, area.bottom() - self.session_panel.height() + 1))
         self.session_panel.move(x, y)
 
     def _show_reply(self, message: str) -> None:
@@ -885,6 +908,7 @@ class DesktopPet(QWidget):
         menu = QMenu(self)
         menu.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         settings_action = menu.addAction("設定")
+        swap_panel_action = menu.addAction("工作狀態面板位置對調")
         replay_action = menu.addAction("重新播放開機動畫")
         exit_action = menu.addAction("Exit")
         self.context_menu = menu
@@ -894,6 +918,8 @@ class DesktopPet(QWidget):
             self.context_menu = None
         if selected_action == settings_action:
             self.open_settings()
+        elif selected_action == swap_panel_action:
+            self.swap_session_panel_side()
         elif selected_action == replay_action:
             self.intro_replay_requested.emit()
         elif selected_action == exit_action:

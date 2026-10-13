@@ -51,7 +51,6 @@ class SettingsPanel(QDialog):
         self.setWindowTitle("桌寵設定")
         self.setWindowFlag(Qt.WindowType.Window)
         self.setWindowIcon(QIcon(str(PROJECT_ROOT / "icon.png")))
-        self.setFixedWidth(650)
         self.setObjectName("settingsPanel")
         self._set_chinese_font()
         self._test_session_id = f"desktop-pet-test-{uuid4().hex}"
@@ -186,8 +185,9 @@ class SettingsPanel(QDialog):
         position_title = QLabel("Session 工作狀態視窗位置")
         position_title.setObjectName("settingTitle")
         position_layout.addWidget(position_title)
-        position_hint = QLabel("相對桌寵左上角的位移；遇到左右螢幕邊緣時會鏡像換邊")
+        position_hint = QLabel("X 是工作狀態與桌寵中心的水平差值；Y 相對桌寵頂端。遇到螢幕邊緣時會鏡像換邊")
         position_hint.setObjectName("description")
+        position_hint.setWordWrap(True)
         position_layout.addWidget(position_hint)
         coordinates = QHBoxLayout()
         for label, value, name in (
@@ -278,7 +278,14 @@ class SettingsPanel(QDialog):
         hook_close.setObjectName("secondaryButton")
         hook_close.clicked.connect(self.close)
         hook_layout.addWidget(hook_close)
-        self.pages.addWidget(hook_page)
+        hook_scroll = QScrollArea()
+        hook_scroll.setWidgetResizable(True)
+        hook_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        hook_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        hook_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        hook_scroll.viewport().setStyleSheet("background: transparent;")
+        hook_scroll.setWidget(hook_page)
+        self.pages.addWidget(hook_scroll)
 
         hook_settings_page = QWidget()
         hook_settings_layout = QVBoxLayout(hook_settings_page)
@@ -422,7 +429,10 @@ class SettingsPanel(QDialog):
         """)
         screen = QApplication.primaryScreen()
         if screen is not None:
-            self.setFixedHeight(min(settings_page.sizeHint().height(), screen.availableGeometry().height() - 40))
+            area = screen.availableGeometry()
+            self.resize(min(820, area.width() - 40), min(1000, area.height() - 40))
+        else:
+            self.resize(820, 1000)
 
     def _show_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)

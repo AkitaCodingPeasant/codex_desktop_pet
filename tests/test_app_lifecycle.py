@@ -30,6 +30,118 @@ class FakeStartupAnimation(QObject):
 
 
 class AppLifecycleTests(unittest.TestCase):
+    def test_legacy_left_edge_offset_is_migrated_to_center_offset(self) -> None:
+        qt_app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as temporary:
+            settings = QSettings(
+                str(Path(temporary) / "pet.ini"), QSettings.Format.IniFormat
+            )
+            settings.setValue("session_panel_offset_x", 0)
+            settings.setValue("session_panel_offset_y", 15)
+            with (
+                patch("desktop_pet.desktop_pet.QSettings", return_value=settings),
+                patch("desktop_pet.desktop_pet.keep_topmost"),
+            ):
+                pet = DesktopPet(load_spritesheet_config())
+                try:
+                    pet.show()
+                    qt_app.processEvents()
+                    area = qt_app.primaryScreen().availableGeometry()
+                    pet.move(area.center().x() - pet.width() // 2, area.top() + 50)
+                    pet._position_session_panel()
+                    self.assertEqual(pet.session_panel.x(), pet.x())
+                    self.assertEqual(pet.session_panel.y(), pet.y() + 15)
+                    self.assertEqual(
+                        pet.session_offset.x(),
+                        pet.session_panel.width() // 2 - pet.width() // 2,
+                    )
+                    self.assertTrue(settings.value("session_panel_offset_centered", type=bool))
+                finally:
+                    pet.close()
+
+    def test_context_menu_swaps_default_panel_side_and_persists(self) -> None:
+        qt_app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as temporary:
+            settings = QSettings(
+                str(Path(temporary) / "pet.ini"), QSettings.Format.IniFormat
+            )
+
+            class MenuEvent:
+                def globalPos(self):
+                    return QPoint(0, 0)
+
+            class FakeMenu:
+                def __init__(self, parent):
+                    self.actions = {}
+
+                def setWindowFlag(self, flag):
+                    pass
+
+                def addAction(self, label):
+                    action = object()
+                    self.actions[label] = action
+                    return action
+
+                def exec(self, position):
+                    return self.actions["工作狀態面板位置對調"]
+
+            with (
+                patch("desktop_pet.desktop_pet.QSettings", return_value=settings),
+                patch("desktop_pet.desktop_pet.QMenu", FakeMenu),
+                patch("desktop_pet.desktop_pet.keep_topmost"),
+            ):
+                pet = DesktopPet(load_spritesheet_config())
+                try:
+                    pet.show()
+                    qt_app.processEvents()
+                    area = qt_app.primaryScreen().availableGeometry()
+                    pet.move(area.center().x() - pet.width() // 2, area.top() + 50)
+                    pet._position_session_panel()
+                    self.assertGreater(pet.session_panel.x(), pet.x())
+                    initial_x = pet._session_horizontal_offset()
+
+                    pet.contextMenuEvent(MenuEvent())
+                    self.assertTrue(pet.session_panel_left)
+                    self.assertEqual(pet.session_offset.x(), -initial_x)
+                    self.assertLess(pet.session_panel.x(), pet.x())
+                    self.assertTrue(settings.value("session_panel_left", type=bool))
+
+                    pet.move(area.left(), area.top() + 50)
+                    pet._position_session_panel()
+                    self.assertGreater(pet.session_panel.x(), pet.x())
+
+                    pet.contextMenuEvent(MenuEvent())
+                    self.assertFalse(pet.session_panel_left)
+                    self.assertEqual(pet.session_offset.x(), initial_x)
+                    self.assertFalse(settings.value("session_panel_left", type=bool))
+                    pet.contextMenuEvent(MenuEvent())
+                finally:
+                    pet.close()
+
+                restored = DesktopPet(load_spritesheet_config())
+                try:
+                    restored.show()
+                    qt_app.processEvents()
+                    restored.move(area.center().x() - restored.width() // 2, area.top() + 50)
+                    restored._position_session_panel()
+                    self.assertTrue(restored.session_panel_left)
+                    self.assertLess(restored.session_panel.x(), restored.x())
+
+                    restored.open_settings()
+                    restored.settings_panel.session_x_spin.setValue(100)
+                    self.assertEqual(restored.session_offset.x(), 100)
+                    restored.contextMenuEvent(MenuEvent())
+                    self.assertEqual(restored.session_offset.x(), -100)
+                    self.assertEqual(settings.value("session_panel_offset_x", type=int), -100)
+                    self.assertEqual(restored.settings_panel.session_x_spin.value(), -100)
+                    self.assertEqual(
+                        restored.session_panel.x() + restored.session_panel.width() // 2
+                        - restored.x() - restored.width() // 2,
+                        -100,
+                    )
+                finally:
+                    restored.close()
+
     def test_session_panel_offset_mirrors_at_both_screen_edges(self) -> None:
         qt_app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as temporary:
@@ -49,21 +161,27 @@ class AppLifecycleTests(unittest.TestCase):
                     y = area.top() + 50
 
                     pet.move(area.left(), y)
-                    pet.set_session_offset(-pet.session_panel.width() - gap, 0)
+                    separation = pet.width() // 2 + pet.session_panel.width() // 2 + gap
+                    pet.set_session_offset(-separation, 0)
                     self.assertEqual(
-                        pet.session_panel.x(), pet.x() + pet.width() + gap
+                        pet.session_panel.x(),
+                        min(area.right() - pet.session_panel.width() + 1,
+                            pet.x() + pet.width() + gap),
                     )
 
                     pet.move(area.right() - pet.width() + 1, y)
-                    pet.set_session_offset(pet.width() + gap, 0)
+                    pet.set_session_offset(separation, 0)
                     self.assertEqual(
-                        pet.session_panel.x(), pet.x() - pet.session_panel.width() - gap
+                        pet.session_panel.x(),
+                        max(area.left(), pet.x() - pet.session_panel.width() - gap),
                     )
 
                     pet.move(area.left() + (area.width() - pet.width()) // 2, y)
                     pet._position_session_panel()
                     self.assertEqual(
-                        pet.session_panel.x(), pet.x() + pet.width() + gap
+                        pet.session_panel.x(),
+                        min(area.right() - pet.session_panel.width() + 1,
+                            pet.x() + pet.width() + gap),
                     )
                 finally:
                     pet.close()
@@ -83,10 +201,13 @@ class AppLifecycleTests(unittest.TestCase):
                     pet.show()
                     qt_app.processEvents()
                     self.assertIsNone(pet.session_offset)
+                    area = qt_app.primaryScreen().availableGeometry()
+                    pet.move(area.center().x() - pet.width() // 2, area.top() + 50)
+                    pet._position_session_panel()
                     pet.open_settings()
                     panel = pet.settings_panel
                     self.assertEqual(
-                        panel.session_x_spin.value(), pet.session_panel.x() - pet.x()
+                        panel.session_x_spin.value(), pet._session_horizontal_offset(),
                     )
                     self.assertEqual(
                         panel.session_y_spin.value(), pet.session_panel.y() - pet.y()
@@ -94,12 +215,22 @@ class AppLifecycleTests(unittest.TestCase):
 
                     panel.session_x_spin.setValue(20)
                     panel.session_y_spin.setValue(30)
-                    self.assertEqual(pet.session_panel.pos(), pet.pos() + QPoint(20, 30))
+                    self.assertEqual(
+                        pet.session_panel.x() + pet.session_panel.width() // 2
+                        - pet.x() - pet.width() // 2,
+                        20,
+                    )
+                    self.assertEqual(pet.session_panel.y(), pet.y() + 30)
                     pet.move(80, 80)
                     pet._position_session_panel()
-                    self.assertEqual(pet.session_panel.pos(), QPoint(100, 110))
+                    self.assertEqual(
+                        pet.session_panel.x(),
+                        pet.x() + pet.width() // 2 + 20 - pet.session_panel.width() // 2,
+                    )
+                    self.assertEqual(pet.session_panel.y(), 110)
                     self.assertEqual(settings.value("session_panel_offset_x", type=int), 20)
                     self.assertEqual(settings.value("session_panel_offset_y", type=int), 30)
+                    self.assertTrue(settings.value("session_panel_offset_centered", type=bool))
                 finally:
                     pet.close()
 
@@ -107,8 +238,13 @@ class AppLifecycleTests(unittest.TestCase):
                 try:
                     restored.show()
                     qt_app.processEvents()
+                    restored.move(area.center().x() - restored.width() // 2, area.top() + 50)
+                    restored._position_session_panel()
+                    self.assertEqual(restored.session_offset, QPoint(20, 30))
                     self.assertEqual(
-                        restored.session_panel.pos(), restored.pos() + QPoint(20, 30)
+                        restored.session_panel.x() + restored.session_panel.width() // 2
+                        - restored.x() - restored.width() // 2,
+                        20,
                     )
                 finally:
                     restored.close()
