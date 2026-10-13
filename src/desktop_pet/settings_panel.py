@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 
 from desktop_pet.config import PROJECT_ROOT
 from desktop_pet.cli_path import CLI_DIRECTORY, add_cli_to_user_path, is_cli_in_user_path
-from desktop_pet.hook_install import install_hooks
+from desktop_pet.hook_install import install_claude_hooks, install_hooks
 
 
 class SettingsPanel(QDialog):
@@ -297,7 +297,7 @@ class SettingsPanel(QDialog):
         hook_settings_title = QLabel("Hook 設定")
         hook_settings_title.setObjectName("title")
         hook_settings_layout.addWidget(hook_settings_title)
-        hook_settings_hint = QLabel("設定 Codex Hook，或讓其他工具透過共用 CLI 傳送桌寵事件。")
+        hook_settings_hint = QLabel("設定 Codex 或 Claude Code Hook，或讓其他工具透過共用 CLI 傳送桌寵事件。")
         hook_settings_hint.setObjectName("subtitle")
         hook_settings_hint.setWordWrap(True)
         hook_settings_layout.addWidget(hook_settings_hint)
@@ -309,6 +309,15 @@ class SettingsPanel(QDialog):
         self.hook_install_result.setObjectName("note")
         self.hook_install_result.setWordWrap(True)
         hook_settings_layout.addWidget(self.hook_install_result)
+        self.install_claude_hook_button = QPushButton("設定／更新 Claude Code Hook")
+        self.install_claude_hook_button.setObjectName("eventButton")
+        self.install_claude_hook_button.clicked.connect(self._install_claude_hooks)
+        hook_settings_layout.addWidget(self.install_claude_hook_button)
+        self.claude_hook_install_result = QLabel("")
+        self.claude_hook_install_result.setObjectName("note")
+        self.claude_hook_install_result.setTextFormat(Qt.TextFormat.PlainText)
+        self.claude_hook_install_result.setWordWrap(True)
+        hook_settings_layout.addWidget(self.claude_hook_install_result)
         self.install_cli_path_button = QPushButton("將 pet-hook 加入使用者 PATH")
         self.install_cli_path_button.setObjectName("eventButton")
         self.install_cli_path_button.clicked.connect(self._install_cli_path)
@@ -525,6 +534,17 @@ class SettingsPanel(QDialog):
         result = "Codex Hook 已設定／更新。" if changed else "Codex Hook 已是最新設定。"
         self.hook_install_result.setText(
             f"{result}\n位置：{target}\n請到 Codex 輸入 /hooks，審閱並信任新增的 Hook。"
+        )
+
+    def _install_claude_hooks(self) -> None:
+        try:
+            target, changed = install_claude_hooks()
+        except (OSError, ValueError) as error:
+            self.claude_hook_install_result.setText(f"設定失敗：{error}")
+            return
+        result = "Claude Code Hook 已設定／更新。" if changed else "Claude Code Hook 已是最新設定。"
+        self.claude_hook_install_result.setText(
+            f"{result}\n位置：{target}\n新開啟的 Claude Code 工作階段會套用；可輸入 /hooks 確認。"
         )
 
     def _send_test_event(self, event_name: str, message_override: str | None = None) -> None:

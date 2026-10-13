@@ -47,6 +47,19 @@ uv run python install_codex_hooks.py
 
 安裝程式會保留既有 Hook；需要修改現有設定時，會先在同一目錄建立 `hooks.json.bak.desktop_pet_v2` 備份。
 
+## 連接 Claude Code
+
+1. 啟動桌寵。
+2. 在桌寵上按右鍵，選擇「設定」。
+3. 切換到「Hook 設定」，按下「設定／更新 Claude Code Hook」。
+4. 重新開啟 Claude Code 工作階段，可輸入 `/hooks` 確認已載入。
+
+Hook 會寫入 `~/.claude/settings.json`（有設定 `CLAUDE_CONFIG_DIR` 時改用該目錄），保留既有設定與 Hook；修改前會先建立 `settings.json.bak.desktop_pet` 備份。Claude Code 送出提示、執行工具、要求授權、透過 `AskUserQuestion` 提問及結束回合時，桌寵都會切換狀態。命令列可執行：
+
+```powershell
+uv run python install_codex_hooks.py --claude
+```
+
 ## 連接其他工具
 
 桌寵啟動後，可以讓其他專案的 Hook 呼叫共用的 `pet-hook` 指令。在「設定 → Hook 設定」按「將 pet-hook 加入使用者 PATH」，重新開啟要呼叫它的工具，再執行 `pet-hook` 或 `pet-hook --help` 查看使用說明。此按鈕只更新目前使用者的 PATH，不會改動其他工具的設定。
@@ -80,7 +93,7 @@ pet-hook turn.completed --message "影片處理完成" --session-id "mytool:proj
 
 - **設定**：調整角色大小、動畫速度、工作清單位置與透明度，並決定下次啟動時是否播放開場動畫。
 - **Hook 測試**：不必真的執行 Codex 工作，也能預覽各種狀態與完成回覆。
-- **Hook 設定**：安裝或更新 Codex Hook，並可將其他工具使用的共用 CLI 加入使用者 PATH。
+- **Hook 設定**：安裝或更新 Codex 或 Claude Code Hook，並可將其他工具使用的共用 CLI 加入使用者 PATH。
 
 所有偏好都會自動保存。關閉設定面板不會結束桌寵；若要退出，請從右鍵選單選擇「Exit」，或在設定頁按「停止運行」。
 

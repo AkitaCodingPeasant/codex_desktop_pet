@@ -306,5 +306,63 @@ class ReplyHookTests(unittest.TestCase):
 
 
 
+    def _run_claude_hook(self, payload: dict) -> dict:
+        from desktop_pet.hook_bridge import main
+        import desktop_pet.hook_bridge as bridge
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
+            receiver.bind((HOST, 0))
+            receiver.settimeout(2)
+            hook_input = json.dumps(payload).encode("utf-8")
+            with (
+                patch.object(bridge, "PORT", receiver.getsockname()[1]),
+                patch("sys.argv", ["hook_bridge.py", "--source", "claude"]),
+                patch("sys.stdin", io.TextIOWrapper(io.BytesIO(hook_input), encoding="utf-8")),
+                patch("sys.stdout", io.StringIO()) as stdout,
+            ):
+                main()
+            packet, _ = receiver.recvfrom(4096)
+        self.assertEqual(stdout.getvalue(), "")
+        return json.loads(packet.decode("utf-8"))
+
+    def test_claude_hooks_share_a_generated_turn_id(self) -> None:
+        import desktop_pet.hook_bridge as bridge
+
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "transcript.jsonl"
+            transcript.write_text("\n".join((
+                json.dumps({"type": "user", "message": {"content": "hi"}}),
+                json.dumps({"type": "assistant", "message": {"content": [
+                    {"type": "text", "text": "Claude 完成了"},
+                ]}}),
+            )), encoding="utf-8")
+            with patch.object(bridge, "CLAUDE_TURN_DIR", Path(directory) / "turns"):
+                started = self._run_claude_hook({
+                    "hook_event_name": "UserPromptSubmit", "session_id": "claude-a",
+                    "prompt": "幫我修 bug", "cwd": r"D:\work\my-app",
+                })
+                asking = self._run_claude_hook({
+                    "hook_event_name": "PreToolUse", "session_id": "claude-a",
+                    "tool_name": "AskUserQuestion",
+                })
+                completed = self._run_claude_hook({
+                    "hook_event_name": "Stop", "session_id": "claude-a",
+                    "transcript_path": str(transcript),
+                })
+                next_turn = self._run_claude_hook({
+                    "hook_event_name": "UserPromptSubmit", "session_id": "claude-a",
+                    "prompt": "下一步", "cwd": r"D:\work\my-app",
+                })
+        self.assertEqual(started["event"], "turn.started")
+        self.assertEqual(started["title"], "my-app")
+        self.assertTrue(started["turn_id"])
+        self.assertEqual(asking["event"], "user_input_requested")
+        self.assertEqual(asking["turn_id"], started["turn_id"])
+        self.assertEqual(completed["event"], "turn.completed")
+        self.assertEqual(completed["message"], "Claude 完成了")
+        self.assertEqual(completed["turn_id"], started["turn_id"])
+        self.assertNotEqual(next_turn["turn_id"], started["turn_id"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -8,6 +8,7 @@ import re
 import socket
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
 from PySide6.QtGui import QTextDocument
@@ -25,13 +26,16 @@ CODEX_EVENTS = {
     "Interrupt": "turn.cancelled",
     "SessionEnd": "session.ended",
 }
-USER_INPUT_TOOLS = frozenset({"request_user_input", "request_user_input_async"})
+USER_INPUT_TOOLS = frozenset({
+    "request_user_input", "request_user_input_async", "AskUserQuestion",
+})
 MEMORY_WRITING_AGENT_PROMPT = re.compile(
     r"^\s*##\s+Memory Writing Agent(?:\s*:|\s*$)", re.IGNORECASE
 )
 IGNORED_SESSION_DIR = (
     Path(tempfile.gettempdir()) / "codex_desktop_pet" / "ignored_sessions"
 )
+CLAUDE_TURN_DIR = Path(tempfile.gettempdir()) / "codex_desktop_pet" / "claude_turns"
 PET_EVENTS = frozenset((
     *CODEX_EVENTS.values(), "turn.failed", "user_input_requested",
     "user_input_completed", "tool.started",
@@ -41,6 +45,59 @@ PET_EVENTS = frozenset((
 def _ignored_session_marker(session_id: str) -> Path:
     digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()
     return IGNORED_SESSION_DIR / digest
+
+
+def claude_turn_id(hook_name: object, session_id: str) -> str:
+    """Claude Code hooks carry no turn ID, so keep one per session between hook processes."""
+    if not session_id:
+        return ""
+    marker = CLAUDE_TURN_DIR / hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+    if hook_name == "SessionEnd":
+        marker.unlink(missing_ok=True)
+        return ""
+    if hook_name != "UserPromptSubmit":
+        try:
+            turn_id = marker.read_text(encoding="utf-8").strip()
+        except OSError:
+            turn_id = ""
+        if turn_id:
+            return turn_id
+    turn_id = uuid.uuid4().hex
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(turn_id, encoding="utf-8")
+    return turn_id
+
+
+def last_transcript_reply(transcript_path: object) -> str:
+    if not isinstance(transcript_path, str) or not transcript_path:
+        return ""
+    try:
+        lines = Path(transcript_path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(entry, dict) or entry.get("type") != "assistant":
+            continue
+        message = entry.get("message")
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            text = "\n".join(
+                block.get("text", "") for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
+        else:
+            continue
+        if text.strip():
+            return text
+    return ""
 
 
 def should_ignore_hook(payload: dict) -> bool:
@@ -168,37 +225,44 @@ def main() -> None:
     if len(sys.argv) == 3 and sys.argv[1] == "--event":
         send_event(sys.argv[2])
         return
+    is_claude = sys.argv[1:] == ["--source", "claude"]
 
     hook_name = None
     try:
         payload = json.load(sys.stdin.buffer)
         hook_name = payload.get("hook_event_name")
         event_name = None if should_ignore_hook(payload) else event_for_hook(payload)
+        session_id = payload.get("session_id")
+        session_id = session_id if isinstance(session_id, str) else ""
+        turn_id = (
+            claude_turn_id(hook_name, session_id) if is_claude
+            else payload.get("turn_id")
+        )
         if event_name is not None:
             message = (
                 payload.get("last_assistant_message") if hook_name == "Stop"
                 else payload.get("prompt") if hook_name == "UserPromptSubmit"
                 else None
             )
+            if is_claude and hook_name == "Stop" and not message:
+                message = last_transcript_reply(payload.get("transcript_path"))
             title = ""
             if hook_name == "UserPromptSubmit":
                 working_directory = payload.get("cwd")
                 title = working_directory_title(
                     working_directory if isinstance(working_directory, str) else os.getcwd()
                 )
-            session_id = payload.get("session_id")
-            turn_id = payload.get("turn_id")
             send_event(
                 event_name,
                 message if isinstance(message, str) else "",
-                session_id if isinstance(session_id, str) else "",
+                session_id,
                 turn_id if isinstance(turn_id, str) else "",
                 title,
             )
     except (OSError, ValueError, TypeError, AttributeError):
-        # A desktop notification must never alter the Codex turn.
+        # A desktop notification must never alter the Codex or Claude Code turn.
         pass
-    if hook_name == "Stop":
+    if hook_name == "Stop" and not is_claude:
         print("{}")
 
 
