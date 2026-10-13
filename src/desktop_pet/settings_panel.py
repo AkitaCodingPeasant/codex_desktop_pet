@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop_pet.config import PROJECT_ROOT
+from desktop_pet.cli_path import CLI_DIRECTORY, add_cli_to_user_path, is_cli_in_user_path
 from desktop_pet.hook_install import install_hooks
 
 
@@ -289,11 +290,11 @@ class SettingsPanel(QDialog):
         hook_settings_title = QLabel("Hook 設定")
         hook_settings_title.setObjectName("title")
         hook_settings_layout.addWidget(hook_settings_title)
-        hook_settings_hint = QLabel("將桌寵 Hook 加入目前使用者的 Codex 設定。")
+        hook_settings_hint = QLabel("設定 Codex Hook，或讓其他工具透過共用 CLI 傳送桌寵事件。")
         hook_settings_hint.setObjectName("subtitle")
         hook_settings_hint.setWordWrap(True)
         hook_settings_layout.addWidget(hook_settings_hint)
-        self.install_hook_button = QPushButton("設定／更新 Hook")
+        self.install_hook_button = QPushButton("設定／更新 Codex Hook")
         self.install_hook_button.setObjectName("eventButton")
         self.install_hook_button.clicked.connect(self._install_hooks)
         hook_settings_layout.addWidget(self.install_hook_button)
@@ -301,6 +302,15 @@ class SettingsPanel(QDialog):
         self.hook_install_result.setObjectName("note")
         self.hook_install_result.setWordWrap(True)
         hook_settings_layout.addWidget(self.hook_install_result)
+        self.install_cli_path_button = QPushButton("將 pet-hook 加入使用者 PATH")
+        self.install_cli_path_button.setObjectName("eventButton")
+        self.install_cli_path_button.clicked.connect(self._install_cli_path)
+        hook_settings_layout.addWidget(self.install_cli_path_button)
+        self.cli_path_result = QLabel("")
+        self.cli_path_result.setObjectName("note")
+        self.cli_path_result.setTextFormat(Qt.TextFormat.PlainText)
+        self.cli_path_result.setWordWrap(True)
+        hook_settings_layout.addWidget(self.cli_path_result)
         hook_settings_layout.addStretch()
         self.pages.addWidget(hook_settings_page)
 
@@ -420,6 +430,34 @@ class SettingsPanel(QDialog):
         self.hook_button.setChecked(index == 1)
         self.hook_settings_button.setChecked(index == 2)
         self.hidden_sessions_button.setChecked(index == 3)
+        if index == 2:
+            self._refresh_cli_path_status()
+
+    def _refresh_cli_path_status(self) -> None:
+        try:
+            installed = is_cli_in_user_path()
+        except (OSError, ValueError) as error:
+            self.cli_path_result.setText(f"無法讀取使用者 PATH：{error}")
+            return
+        if installed:
+            self.cli_path_result.setText(
+                f"pet-hook 已加入使用者 PATH。\n位置：{CLI_DIRECTORY}"
+            )
+        else:
+            self.cli_path_result.setText(
+                f"共用 CLI 位置：{CLI_DIRECTORY}\n按下按鈕後，重新開啟要呼叫它的工具。"
+            )
+
+    def _install_cli_path(self) -> None:
+        try:
+            changed = add_cli_to_user_path()
+        except (OSError, ValueError) as error:
+            self.cli_path_result.setText(f"加入 PATH 失敗：{error}")
+            return
+        result = "已將 pet-hook 加入使用者 PATH。" if changed else "pet-hook 已在使用者 PATH 中。"
+        self.cli_path_result.setText(
+            f"{result}\n位置：{CLI_DIRECTORY}\n請重新開啟要呼叫它的工具，再執行 pet-hook --help 確認。"
+        )
 
     def set_hidden_sessions(self, sessions: list[tuple[str, str]]) -> None:
         hidden_count = len(sessions)
@@ -474,7 +512,7 @@ class SettingsPanel(QDialog):
         except (OSError, ValueError) as error:
             self.hook_install_result.setText(f"設定失敗：{error}")
             return
-        result = "Hook 已設定／更新。" if changed else "Hook 已是最新設定。"
+        result = "Codex Hook 已設定／更新。" if changed else "Codex Hook 已是最新設定。"
         self.hook_install_result.setText(
             f"{result}\n位置：{target}\n請到 Codex 輸入 /hooks，審閱並信任新增的 Hook。"
         )

@@ -20,6 +20,23 @@ from desktop_pet.settings_panel import SettingsPanel
 
 
 class HookPanelTests(unittest.TestCase):
+    def test_hook_settings_can_add_shared_cli_to_user_path(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        with (
+            patch("desktop_pet.settings_panel.is_cli_in_user_path", return_value=False),
+            patch("desktop_pet.settings_panel.add_cli_to_user_path", return_value=True) as install,
+        ):
+            panel = SettingsPanel(100, 8, QPixmap(16, 16))
+            try:
+                panel.hook_settings_button.click()
+                self.assertIn("共用 CLI 位置", panel.cli_path_result.text())
+                panel.install_cli_path_button.click()
+                install.assert_called_once_with()
+                self.assertIn("已將 pet-hook 加入使用者 PATH", panel.cli_path_result.text())
+            finally:
+                panel.close()
+        self.assertIsNotNone(app)
+
     def test_hook_settings_button_installs_and_reports_result(self) -> None:
         app = QApplication.instance() or QApplication([])
         with patch("desktop_pet.settings_panel.install_hooks", return_value=(
@@ -31,7 +48,7 @@ class HookPanelTests(unittest.TestCase):
                 self.assertEqual(panel.pages.currentIndex(), 2)
                 panel.install_hook_button.click()
                 install.assert_called_once_with()
-                self.assertIn("Hook 已設定／更新", panel.hook_install_result.text())
+                self.assertIn("Codex Hook 已設定／更新", panel.hook_install_result.text())
                 self.assertIn("/hooks", panel.hook_install_result.text())
             finally:
                 panel.close()

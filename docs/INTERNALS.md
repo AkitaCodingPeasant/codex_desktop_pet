@@ -22,6 +22,10 @@ Codex Hook 由 `hook_bridge.py` 接收事件並轉換成桌寵事件，再透過
 
 `title` 可以省略或留空；只有 `title` 與 `message` 皆有內容時，工作清單才會顯示為 `title > message`。不同工具應在 `session_id` 加入來源前綴，並讓同一回合的所有事件使用相同的 `session_id` 與 `turn_id`。
 
+共用命令入口是 `bin/pet-hook.cmd`，會呼叫同目錄的 `pet_hook.py`。它優先使用專案 `.venv` 的 Python，否則使用 Windows `py -3`；Python 腳本只使用標準函式庫。事件參數為 `event`、`--title`、`--message`、`--session-id` 與 `--turn-id`，其中 `session.ended` 可省略 `--turn-id`。封包以 UTF-8 編碼且不可超過 4096 bytes，對應接收端的緩衝區大小。
+
+「Hook 設定」頁的 PATH 按鈕只在使用者點擊後更新 `HKEY_CURRENT_USER\Environment\Path`，保留原有值與型別，避免重複加入 `bin` 目錄，並通知 Windows 環境變數已變更。新啟動的工具會讀到新 PATH；已開啟的工具需重新啟動。測試這項功能時應模擬登錄檔，不要改寫真實使用者 PATH。
+
 ## Codex Hook 安裝
 
 使用者可從設定面板的「Hook 設定」頁安裝，也可在專案根目錄執行：

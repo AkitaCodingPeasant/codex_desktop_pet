@@ -36,7 +36,7 @@ uv run desktop-pet
 
 1. 啟動桌寵。
 2. 在桌寵上按右鍵，選擇「設定」。
-3. 切換到「Hook 設定」，按下「設定／更新 Hook」。
+3. 切換到「Hook 設定」，按下「設定／更新 Codex Hook」。
 4. 回到 Codex 輸入 `/hooks`，審閱並信任新增或更新的 Hook。
 
 設定完成後，Codex 開始工作、執行工具、要求授權及結束回合時，桌寵會自動切換狀態。若偏好命令列，也可以執行：
@@ -46,6 +46,26 @@ uv run python install_codex_hooks.py
 ```
 
 安裝程式會保留既有 Hook；需要修改現有設定時，會先在同一目錄建立 `hooks.json.bak.desktop_pet_v2` 備份。
+
+## 連接其他工具
+
+桌寵啟動後，可以讓其他專案的 Hook 呼叫共用的 `pet-hook` 指令。在「設定 → Hook 設定」按「將 pet-hook 加入使用者 PATH」，重新開啟要呼叫它的工具，再執行 `pet-hook --help` 確認指令可用。此按鈕只更新目前使用者的 PATH，不會改動其他工具的設定。
+
+例如在工具開始工作時呼叫：
+
+```cmd
+pet-hook turn.started --title "MyTool" --message "正在產生影片" --session-id "mytool:project-123" --turn-id "job-456"
+```
+
+完成時沿用同一組 ID：
+
+```cmd
+pet-hook turn.completed --message "影片處理完成" --session-id "mytool:project-123" --turn-id "job-456"
+```
+
+`--title` 可省略；只有標題與訊息都有內容時，工作清單才會顯示 `標題 > 訊息`。每項新工作應使用新的 `turn-id`；同一工作階段可重複使用 `session-id`。工具開始與結束一項子工作時，分別送出 `tool.started` 與 `turn.in_progress`。失敗、取消或結束工作階段時可送出 `turn.failed`、`turn.cancelled` 或 `session.ended`。除 `session.ended` 外，每個事件都要提供兩個 ID。
+
+不想修改 PATH，也可以在專案 Hook 設定中直接使用 `D:\codex_desktop_pet\bin\pet-hook.cmd` 的絕對路徑。桌寵若未啟動，UDP 訊息不會保留待送；指令無法確認桌寵是否已收到。
 
 ## 日常操作
 
@@ -60,7 +80,7 @@ uv run python install_codex_hooks.py
 
 - **設定**：調整角色大小、動畫速度、工作清單位置與透明度，並決定下次啟動時是否播放開場動畫。
 - **Hook 測試**：不必真的執行 Codex 工作，也能預覽各種狀態與完成回覆。
-- **Hook 設定**：安裝或更新 Codex Hook。
+- **Hook 設定**：安裝或更新 Codex Hook，並可將其他工具使用的共用 CLI 加入使用者 PATH。
 
 所有偏好都會自動保存。關閉設定面板不會結束桌寵；若要退出，請從右鍵選單選擇「Exit」，或在設定頁按「停止運行」。
 
