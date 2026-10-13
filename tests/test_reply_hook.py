@@ -260,10 +260,10 @@ class ReplyHookTests(unittest.TestCase):
             port = temporary.getsockname()[1]
         with patch.object(bridge, "PORT", port), patch.object(listener_module, "PORT", port):
             listener = HookListener()
-            events: list[tuple[str, str, str, str, str]] = []
+            events: list[tuple[str, str, str, str, str, str]] = []
             listener.event_received.connect(
-                lambda event, message, session, turn, title: events.append(
-                    (event, message, session, turn, title)
+                lambda event, message, session, turn, title, status: events.append(
+                    (event, message, session, turn, title, status)
                 )
             )
             try:
@@ -273,7 +273,7 @@ class ReplyHookTests(unittest.TestCase):
                 listener._receive_pending()
                 self.assertEqual(
                     events,
-                    [("turn.completed", "回覆內容", "session-a", "turn-a", "MyTool")],
+                    [("turn.completed", "回覆內容", "session-a", "turn-a", "MyTool", "")],
                 )
                 send_event(
                     "turn.completed",
@@ -289,6 +289,7 @@ class ReplyHookTests(unittest.TestCase):
                 legacy_packet = json.dumps({
                     "event": "turn.started",
                     "message": "舊版訊息",
+                    "status": "排程中",
                     "session_id": "legacy-session",
                     "turn_id": "legacy-turn",
                 }, ensure_ascii=False).encode("utf-8")
@@ -297,7 +298,7 @@ class ReplyHookTests(unittest.TestCase):
                 listener._receive_pending()
                 self.assertEqual(
                     events[-1],
-                    ("turn.started", "舊版訊息", "legacy-session", "legacy-turn", ""),
+                    ("turn.started", "舊版訊息", "legacy-session", "legacy-turn", "", "排程中"),
                 )
             finally:
                 listener.close()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import socket
 import unittest
@@ -20,6 +21,39 @@ from desktop_pet.settings_panel import SettingsPanel
 
 
 class HookPanelTests(unittest.TestCase):
+    def test_udp_custom_status_reaches_session_row(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as temporary:
+            temporary.bind((bridge.HOST, 0))
+            port = temporary.getsockname()[1]
+        with (
+            patch.object(listener_module, "PORT", port),
+            patch("desktop_pet.desktop_pet.keep_topmost"),
+        ):
+            pet = DesktopPet(load_spritesheet_config())
+            listener = HookListener()
+            listener.event_received.connect(pet.handle_event)
+            try:
+                packet = json.dumps({
+                    "event": "turn.started",
+                    "title": "VideoTool",
+                    "message": "正在產生影片",
+                    "status": "排程中",
+                    "session_id": "video:project-a",
+                    "turn_id": "job-001",
+                }, ensure_ascii=False).encode("utf-8")
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+                    sender.sendto(packet, (bridge.HOST, port))
+                listener._receive_pending()
+                row = pet.session_panel.rows["video:project-a"]
+                self.assertEqual(row.name_label.text(), "VideoTool > 正在產生影片")
+                self.assertEqual(row.status_label.text(), "排程中")
+                self.assertEqual(pet.state, "thinking")
+            finally:
+                listener.close()
+                pet.close()
+        self.assertIsNotNone(app)
+
     def test_hook_settings_can_add_shared_cli_to_user_path(self) -> None:
         app = QApplication.instance() or QApplication([])
         with (

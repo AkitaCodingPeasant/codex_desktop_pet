@@ -54,7 +54,7 @@ uv run python install_codex_hooks.py
 例如在工具開始工作時呼叫：
 
 ```cmd
-pet-hook turn.started --title "MyTool" --message "正在產生影片" --session-id "mytool:project-123" --turn-id "job-456"
+pet-hook turn.started --title "MyTool" --message "正在產生影片" --status "排程中" --session-id "mytool:project-123" --turn-id "job-456"
 ```
 
 完成時沿用同一組 ID：
@@ -63,7 +63,7 @@ pet-hook turn.started --title "MyTool" --message "正在產生影片" --session-
 pet-hook turn.completed --message "影片處理完成" --session-id "mytool:project-123" --turn-id "job-456"
 ```
 
-`--title` 可省略；只有標題與訊息都有內容時，工作清單才會顯示 `標題 > 訊息`。每項新工作應使用新的 `turn-id`；同一工作階段可重複使用 `session-id`。工具開始與結束一項子工作時，分別送出 `tool.started` 與 `turn.in_progress`。失敗、取消或結束工作階段時可送出 `turn.failed`、`turn.cancelled` 或 `session.ended`。除 `session.ended` 外，每個事件都要提供兩個 ID。
+`--title` 與 `--status` 都可省略；只有標題與訊息都有內容時，工作清單才會顯示 `標題 > 訊息`。`--status` 只取代這次事件在工作清單上的預設狀態文字，例如 `思考中` 或 `調用工具中`，不改變動畫；下個事件未提供時會回到該事件的預設文字。每項新工作應使用新的 `turn-id`；同一工作階段可重複使用 `session-id`。工具開始與結束一項子工作時，分別送出 `tool.started` 與 `turn.in_progress`。失敗、取消或結束工作階段時可送出 `turn.failed`、`turn.cancelled` 或 `session.ended`。除 `session.ended` 外，每個事件都要提供兩個 ID。
 
 不想修改 PATH，也可以在專案 Hook 設定中直接使用 `D:\codex_desktop_pet\bin\pet-hook.cmd` 的絕對路徑。桌寵若未啟動，UDP 訊息不會保留待送；指令無法確認桌寵是否已收到。
 

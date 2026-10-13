@@ -26,6 +26,7 @@ class SharedCliTests(unittest.TestCase):
         self.assertIn("usage: pet-hook", output.getvalue())
         self.assertIn("turn.started", output.getvalue())
         self.assertIn("--session-id", output.getvalue())
+        self.assertIn("--status", output.getvalue())
         self.assertIn("範例（CMD）：", output.getvalue())
         self.assertIn("pet-hook tool.started", output.getvalue())
         self.assertIn("pet-hook turn.completed", output.getvalue())
@@ -37,6 +38,7 @@ class SharedCliTests(unittest.TestCase):
             with patch.object(pet_hook, "PORT", receiver.getsockname()[1]):
                 self.assertEqual(pet_hook.main([
                     "turn.started", "--title", "MyTool", "--message", "正在產生影片",
+                    "--status", "排程中",
                     "--session-id", "mytool:project-123", "--turn-id", "job-456",
                 ]), 0)
             packet, _ = receiver.recvfrom(4096)
@@ -44,6 +46,7 @@ class SharedCliTests(unittest.TestCase):
             "event": "turn.started",
             "title": "MyTool",
             "message": "正在產生影片",
+            "status": "排程中",
             "session_id": "mytool:project-123",
             "turn_id": "job-456",
         })

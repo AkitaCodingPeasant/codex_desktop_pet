@@ -205,6 +205,46 @@ class TurnPanelTests(unittest.TestCase):
         self.assertEqual(label.text(), "正在產生影片")
         self.assertNotIn(">", label.text())
 
+    def test_custom_event_status_replaces_label_without_changing_animation_or_color(self) -> None:
+        self.pet.handle_event(
+            "turn.started", "產生影片", "video-session", "job-1", status="排程中"
+        )
+        row = self.pet.session_panel.rows["video-session"]
+        self.assertEqual(row.status_label.text(), "排程中")
+        self.assertEqual(self.pet.state, "thinking")
+
+        self.pet.handle_event(
+            "tool.started", session_id="video-session", turn_id="job-1", status="編碼中"
+        )
+        self.assertEqual(row.status_label.text(), "編碼中")
+        self.assertEqual(self.pet.state, "working")
+
+        self.pet.handle_event(
+            "turn.in_progress", session_id="video-session", turn_id="job-1"
+        )
+        self.assertEqual(row.status_label.text(), "思考中")
+
+        self.pet.handle_event(
+            "turn.completed", session_id="video-session", turn_id="job-1", status="已輸出"
+        )
+        self.assertEqual(row.status_label.text(), "已輸出")
+        self.assertEqual(row.status_dot.color.name(), "#1ebe56")
+        self.assertEqual(self.pet.state, "result")
+
+    def test_custom_session_end_status_is_retained_when_restored(self) -> None:
+        self.pet.handle_event(
+            "turn.started", session_id="video-session", turn_id="job-1"
+        )
+        panel = self.pet.session_panel
+        panel.dismiss_session("video-session")
+        self.pet.handle_event(
+            "session.ended", session_id="video-session", status="工作階段已關閉"
+        )
+        panel.restore_session("video-session")
+        self.assertEqual(
+            panel.rows["video-session"].status_label.text(), "工作階段已關閉"
+        )
+
     def test_long_session_title_ends_with_three_dots(self) -> None:
         title = "A" * 26
         self.pet.session_panel.set_panel_width(600)

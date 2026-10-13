@@ -26,13 +26,15 @@ EVENTS = (
 
 
 def build_packet(
-    event: str, title: str, message: str, session_id: str, turn_id: str
+    event: str, title: str, message: str, session_id: str, turn_id: str,
+    status: str = "",
 ) -> bytes:
     packet = json.dumps(
         {
             "event": event,
             "title": title,
             "message": message,
+            "status": status,
             "session_id": session_id,
             "turn_id": turn_id,
         },
@@ -52,16 +54,18 @@ def main(argv: list[str] | None = None) -> int:
             "範例（CMD）：\n"
             "  pet-hook turn.started --title \"VideoTool\" --message \"正在產生影片\" "
             "--session-id video:project-a --turn-id job-001\n"
-            "  pet-hook tool.started --session-id video:project-a --turn-id job-001\n"
+            "  pet-hook tool.started --status \"編碼中\" "
+            "--session-id video:project-a --turn-id job-001\n"
             "  pet-hook turn.in_progress --session-id video:project-a --turn-id job-001\n"
             "  pet-hook turn.completed --message \"影片處理完成\" "
             "--session-id video:project-a --turn-id job-001\n"
-            "\n--title 可省略；同一回合請沿用相同的 session-id 與 turn-id。"
+            "\n--title 與 --status 可省略；同一回合請沿用相同的 session-id 與 turn-id。"
         ),
     )
     parser.add_argument("event", choices=EVENTS, help="桌寵事件名稱")
     parser.add_argument("--title", default="", help="工作清單標題，可省略")
     parser.add_argument("--message", default="", help="工作訊息或完成回覆")
+    parser.add_argument("--status", default="", help="覆蓋工作清單的預設狀態文字")
     parser.add_argument("--session-id", required=True, help="工具的工作階段 ID")
     parser.add_argument("--turn-id", default="", help="本次工作的回合 ID")
     if argv is None:
@@ -77,7 +81,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         packet = build_packet(
-            args.event, args.title, args.message, args.session_id, args.turn_id
+            args.event, args.title, args.message, args.session_id, args.turn_id,
+            args.status,
         )
     except ValueError as error:
         parser.error(str(error))

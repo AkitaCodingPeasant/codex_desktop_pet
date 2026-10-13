@@ -182,11 +182,15 @@ class SessionRow(QFrame):
         self.setMinimumHeight(50)
         self.set_status("思考中")
 
-    def set_status(self, status: str, terminal: bool = False) -> None:
+    def set_status(
+        self, status: str, terminal: bool = False, status_kind: str = ""
+    ) -> None:
         self.status_label.setText(status)
-        if status == "已完成":
+        if status_kind == "turn.completed" or (not status_kind and status == "已完成"):
             color = "#1EBE56"
-        elif status == "已取消" or status == "執行失敗":
+        elif status_kind in {"turn.cancelled", "turn.failed"} or (
+            not status_kind and status in {"已取消", "執行失敗"}
+        ):
             color = "#dd2929"
         else:
             color = "#3998d8"
@@ -298,6 +302,7 @@ class TurnPanel(QWidget):
         self.session_numbers: dict[str, int] = {}
         self.session_titles: dict[str, str] = {}
         self.session_states: dict[str, tuple[str, str, bool]] = {}
+        self.session_status_kinds: dict[str, str] = {}
         self.hidden_sessions: set[str] = set()
         self.next_number = 1
 
@@ -360,13 +365,15 @@ class TurnPanel(QWidget):
         self.right_resize_handle.raise_()
 
     def set_turn(
-        self, key: tuple[str, str], status: str, terminal: bool = False, title: str = ""
+        self, key: tuple[str, str], status: str, terminal: bool = False,
+        title: str = "", status_kind: str = "",
     ) -> None:
         session_id, turn_id = key
         normalized_title = " ".join(title.split())
         if normalized_title:
             self.session_titles[session_id] = normalized_title
         self.session_states[session_id] = (turn_id, status, terminal)
+        self.session_status_kinds[session_id] = status_kind
         if session_id in self.hidden_sessions:
             return
         row = self.rows.get(session_id)
@@ -381,7 +388,7 @@ class TurnPanel(QWidget):
         if session_id in self.session_titles:
             row.set_title(self.session_titles[session_id])
         row.set_turn_id(turn_id)
-        row.set_status(status, terminal)
+        row.set_status(status, terminal, status_kind)
         self.empty_label.setVisible(not self.rows)
         self._resize_for_rows()
 
@@ -411,6 +418,7 @@ class TurnPanel(QWidget):
                 status,
                 terminal,
                 self.session_titles.get(session_id, ""),
+                self.session_status_kinds.get(session_id, ""),
             )
         self.session_hidden_changed.emit(session_id, False)
 
@@ -427,14 +435,16 @@ class TurnPanel(QWidget):
             for session_id in sorted(self.hidden_sessions, key=sort_key)
         ]
 
-    def end_session(self, session_id: str) -> None:
+    def end_session(self, session_id: str, status: str = "") -> None:
+        display_status = " ".join(status.split()) or "已結束"
         state = self.session_states.get(session_id)
         if state is not None:
             turn_id, _, _ = state
-            self.session_states[session_id] = (turn_id, "已結束", True)
+            self.session_states[session_id] = (turn_id, display_status, True)
+            self.session_status_kinds[session_id] = "session.ended"
         row = self.rows.get(session_id)
         if row is not None and not row.terminal:
-            row.set_status("已結束", True)
+            row.set_status(display_status, True, "session.ended")
         self._resize_for_rows()
 
     def _resize_for_rows(self) -> None:

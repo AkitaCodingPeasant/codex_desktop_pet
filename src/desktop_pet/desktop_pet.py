@@ -606,6 +606,7 @@ class DesktopPet(QWidget):
         session_id: str = "",
         turn_id: str = "",
         title: str = "",
+        status: str = "",
     ) -> None:
         key = (session_id, turn_id)
         hidden = session_id in self.session_panel.hidden_sessions
@@ -619,14 +620,15 @@ class DesktopPet(QWidget):
         if event_name in RESULT_CLIPS and key in self.finished_turns:
             return
         if event_name == "session.ended":
-            self.session_panel.end_session(session_id)
+            self.session_panel.end_session(session_id, status)
         elif event_name in EVENT_STATUSES:
             self.session_panel.set_turn(
                 key,
-                EVENT_STATUSES[event_name],
+                " ".join(status.split()) or EVENT_STATUSES[event_name],
                 event_name in TERMINAL_STATUSES,
                 self._turn_display_title(title, message)
                 if event_name == "turn.started" else "",
+                event_name,
             )
         if hidden:
             self._update_hidden_sessions_panel()
