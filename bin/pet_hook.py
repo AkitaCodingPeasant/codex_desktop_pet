@@ -27,12 +27,13 @@ EVENTS = (
 
 def build_packet(
     event: str, title: str, message: str, session_id: str, turn_id: str,
-    status: str = "",
+    status: str = "", subtitle: str = "",
 ) -> bytes:
     packet = json.dumps(
         {
             "event": event,
             "title": title,
+            "subtitle": subtitle,
             "message": message,
             "status": status,
             "session_id": session_id,
@@ -41,7 +42,7 @@ def build_packet(
         ensure_ascii=False,
     ).encode("utf-8")
     if len(packet) > MAX_PACKET_BYTES:
-        raise ValueError(f"事件封包超過 {MAX_PACKET_BYTES} bytes，請縮短標題或訊息。")
+        raise ValueError(f"事件封包超過 {MAX_PACKET_BYTES} bytes，請縮短標題、副標題或訊息。")
     return packet
 
 
@@ -52,18 +53,21 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "範例（CMD）：\n"
-            "  pet-hook turn.started --title \"VideoTool\" --message \"正在產生影片\" "
-            "--session-id video:project-a --turn-id job-001\n"
+            "  pet-hook turn.started --title \"VideoTool\" --subtitle \"專案 A\" "
+            "--message \"正在產生影片\" --session-id video:project-a --turn-id job-001\n"
             "  pet-hook tool.started --status \"編碼中\" "
             "--session-id video:project-a --turn-id job-001\n"
             "  pet-hook turn.in_progress --session-id video:project-a --turn-id job-001\n"
             "  pet-hook turn.completed --message \"影片處理完成\" "
             "--session-id video:project-a --turn-id job-001\n"
-            "\n--title 與 --status 可省略；同一回合請沿用相同的 session-id 與 turn-id。"
+            "\n工作清單顯示「標題 > 副標題」（標題為粗體），任何事件都可更新；"
+            "turn.started 未提供 --subtitle 時改用 --message。\n"
+            "--title、--subtitle 與 --status 可省略；同一回合請沿用相同的 session-id 與 turn-id。"
         ),
     )
     parser.add_argument("event", choices=EVENTS, help="桌寵事件名稱")
     parser.add_argument("--title", default="", help="工作清單標題，可省略")
+    parser.add_argument("--subtitle", default="", help="工作清單副標題，顯示在粗體標題後方")
     parser.add_argument("--message", default="", help="工作訊息或完成回覆")
     parser.add_argument("--status", default="", help="覆蓋工作清單的預設狀態文字")
     parser.add_argument("--session-id", required=True, help="工具的工作階段 ID")
@@ -82,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         packet = build_packet(
             args.event, args.title, args.message, args.session_id, args.turn_id,
-            args.status,
+            args.status, args.subtitle,
         )
     except ValueError as error:
         parser.error(str(error))

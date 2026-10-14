@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,7 +13,7 @@ from PySide6.QtCore import QObject, QPoint, QSettings, QTimer, Signal, Qt
 from PySide6.QtWidgets import QApplication
 
 from desktop_pet import app as pet_app
-from desktop_pet.config import load_spritesheet_config
+from desktop_pet.config import PROJECT_ROOT, load_spritesheet_config
 from desktop_pet.desktop_pet import DesktopPet
 
 
@@ -460,6 +461,44 @@ class AppLifecycleTests(unittest.TestCase):
                 pet.contextMenuEvent(MenuEvent())
             self.assertIsNotNone(pet.settings_panel)
             self.assertTrue(pet.settings_panel.isVisible())
+        finally:
+            pet.close()
+
+    def test_context_menu_opens_project_repo_in_vscode(self) -> None:
+        QApplication.instance() or QApplication([])
+        pet = DesktopPet(load_spritesheet_config())
+
+        class MenuEvent:
+            def globalPos(self):
+                return QPoint(0, 0)
+
+        class FakeMenu:
+            def __init__(self, parent):
+                self.actions = {}
+
+            def setWindowFlag(self, flag):
+                pass
+
+            def addAction(self, label):
+                action = object()
+                self.actions[label] = action
+                return action
+
+            def exec(self, position):
+                return self.actions["打開專案 repo"]
+
+        try:
+            with (
+                patch("desktop_pet.desktop_pet.QMenu", FakeMenu),
+                patch("desktop_pet.desktop_pet.shutil.which", return_value="code.cmd"),
+                patch("desktop_pet.desktop_pet.subprocess.Popen") as launch,
+            ):
+                pet.contextMenuEvent(MenuEvent())
+            launch.assert_called_once_with(
+                ["code.cmd", str(PROJECT_ROOT)],
+                cwd=PROJECT_ROOT,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
         finally:
             pet.close()
 

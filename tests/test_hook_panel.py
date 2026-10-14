@@ -21,6 +21,27 @@ from desktop_pet.settings_panel import SettingsPanel
 
 
 class HookPanelTests(unittest.TestCase):
+    def test_call_log_shows_events_before_and_after_settings_open(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        with patch("desktop_pet.desktop_pet.keep_topmost"):
+            pet = DesktopPet(load_spritesheet_config())
+            try:
+                pet.handle_event("turn.started", "測試提示", "session-a", "turn-1")
+                pet.open_settings()
+                panel = pet.settings_panel
+                panel.call_log_button.click()
+                self.assertEqual(panel.pages.currentIndex(), 4)
+                self.assertTrue(panel.call_log_button.isChecked())
+                self.assertIn("turn.started", panel.call_log_view.toPlainText())
+                self.assertIn("測試提示", panel.call_log_view.toPlainText())
+
+                pet.handle_event("tool.started", session_id="session-a", turn_id="turn-1")
+                self.assertIn("tool.started", panel.call_log_view.toPlainText())
+                self.assertEqual(len(panel.call_log_view.toPlainText().splitlines()), 2)
+            finally:
+                pet.close()
+        self.assertIsNotNone(app)
+
     def test_udp_custom_status_reaches_session_row(self) -> None:
         app = QApplication.instance() or QApplication([])
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as temporary:
@@ -49,8 +70,36 @@ class HookPanelTests(unittest.TestCase):
                 self.assertEqual(row.name_label.text(), "VideoTool > 正在產生影片")
                 self.assertEqual(row.status_label.text(), "排程中")
                 self.assertEqual(pet.state, "thinking")
+                pet.open_settings()
+                pet.settings_panel.call_log_button.click()
+                self.assertIn("video:project-a", pet.settings_panel.call_log_view.toPlainText())
             finally:
                 listener.close()
+                pet.close()
+        self.assertIsNotNone(app)
+
+    def test_external_hook_can_name_session_from_any_event(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        with patch("desktop_pet.desktop_pet.keep_topmost"):
+            pet = DesktopPet(load_spritesheet_config())
+            try:
+                pet.handle_event(
+                    "tool.started", "", "video:project-b", "job-002", "VideoTool",
+                    "", "專案 B",
+                )
+                row = pet.session_panel.rows["video:project-b"]
+                row.name_label.resize(400, row.name_label.height())
+                row._update_visible_title()
+                self.assertEqual(row.name_label.text(), "VideoTool > 專案 B")
+                self.assertEqual(row.name_label.directory_prefix, "VideoTool")
+                pet.handle_event(
+                    "turn.started", "正在產生影片", "video:project-b", "job-003",
+                    "VideoTool", "", "專案 B",
+                )
+                self.assertEqual(row.title, "VideoTool > 專案 B")
+                pet.handle_event("turn.in_progress", "", "video:project-b", "job-003")
+                self.assertEqual(row.title, "VideoTool > 專案 B")
+            finally:
                 pet.close()
         self.assertIsNotNone(app)
 

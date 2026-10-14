@@ -27,6 +27,7 @@ class SharedCliTests(unittest.TestCase):
         self.assertIn("turn.started", output.getvalue())
         self.assertIn("--session-id", output.getvalue())
         self.assertIn("--status", output.getvalue())
+        self.assertIn("--subtitle", output.getvalue())
         self.assertIn("範例（CMD）：", output.getvalue())
         self.assertIn("pet-hook tool.started", output.getvalue())
         self.assertIn("pet-hook turn.completed", output.getvalue())
@@ -45,11 +46,26 @@ class SharedCliTests(unittest.TestCase):
         self.assertEqual(json.loads(packet.decode("utf-8")), {
             "event": "turn.started",
             "title": "MyTool",
+            "subtitle": "",
             "message": "正在產生影片",
             "status": "排程中",
             "session_id": "mytool:project-123",
             "turn_id": "job-456",
         })
+
+    def test_cli_sends_subtitle(self) -> None:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
+            receiver.bind((pet_hook.HOST, 0))
+            receiver.settimeout(2)
+            with patch.object(pet_hook, "PORT", receiver.getsockname()[1]):
+                self.assertEqual(pet_hook.main([
+                    "tool.started", "--title", "MyTool", "--subtitle", "專案 A",
+                    "--session-id", "mytool:project-123", "--turn-id", "job-456",
+                ]), 0)
+            packet, _ = receiver.recvfrom(4096)
+        payload = json.loads(packet.decode("utf-8"))
+        self.assertEqual(payload["title"], "MyTool")
+        self.assertEqual(payload["subtitle"], "專案 A")
 
     def test_cli_requires_turn_id_except_for_session_end(self) -> None:
         with self.assertRaises(SystemExit) as error:

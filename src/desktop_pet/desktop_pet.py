@@ -4,6 +4,9 @@ import math
 import os
 import random
 import re
+import shutil
+import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 
@@ -16,11 +19,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
+    QMessageBox,
     QVBoxLayout,
     QWidget,
 )
 
-from desktop_pet.config import SpriteSheetConfig
+from desktop_pet.config import PROJECT_ROOT, SpriteSheetConfig
 from desktop_pet.hook_bridge import send_event
 from desktop_pet.settings_panel import SettingsPanel
 from desktop_pet.topmost import keep_topmost
@@ -243,6 +247,7 @@ class DesktopPet(QWidget):
             bool, self.settings.value("session_panel_left", False, type=bool)
         )
         self.settings_panel: SettingsPanel | None = None
+        self.call_records: list[str] = []
         self.context_menu: QMenu | None = None
 
         self.setWindowFlags(
@@ -390,6 +395,7 @@ class DesktopPet(QWidget):
             panel.hook_test_requested.connect(send_event)
             panel.restore_session_requested.connect(self.session_panel.restore_session)
             panel.stop_requested.connect(QApplication.quit)
+            panel.set_call_records(self.call_records)
             self.settings_panel = panel
         self._update_panel_status()
         self._update_hidden_sessions_panel()
@@ -630,7 +636,20 @@ class DesktopPet(QWidget):
         turn_id: str = "",
         title: str = "",
         status: str = "",
+        subtitle: str = "",
     ) -> None:
+        timestamp = datetime.now().astimezone().strftime("%H:%M:%S")
+        details = " · ".join(
+            part for part in (title, subtitle, status, message, session_id, turn_id)
+            if part
+        )
+        details = " ".join(details.split())
+        record = f"{timestamp}  {event_name}" + (f"  ·  {details}" if details else "")
+        self.call_records.append(record)
+        if len(self.call_records) > 200:
+            del self.call_records[:-200]
+        if self.settings_panel is not None:
+            self.settings_panel.add_call_record(record)
         key = (session_id, turn_id)
         hidden = session_id in self.session_panel.hidden_sessions
         if session_id and turn_id and event_name != "turn.started":
@@ -649,8 +668,11 @@ class DesktopPet(QWidget):
                 key,
                 " ".join(status.split()) or EVENT_STATUSES[event_name],
                 event_name in TERMINAL_STATUSES,
-                self._turn_display_title(title, message)
-                if event_name == "turn.started" else "",
+                # Any event may name the session; only a new turn falls back to its prompt.
+                self._turn_display_title(
+                    title,
+                    subtitle or (message if event_name == "turn.started" else ""),
+                ),
                 event_name,
             )
         if hidden:
@@ -786,12 +808,12 @@ class DesktopPet(QWidget):
                 self._next_idle()
 
     @staticmethod
-    def _turn_display_title(title: str, message: str) -> str:
+    def _turn_display_title(title: str, subtitle: str) -> str:
         normalized_title = " ".join(title.split())
-        normalized_message = " ".join(message.split())
-        if normalized_title and normalized_message:
-            return f"{normalized_title} > {normalized_message}"
-        return normalized_title or normalized_message
+        normalized_subtitle = " ".join(subtitle.split())
+        if normalized_title and normalized_subtitle:
+            return f"{normalized_title} > {normalized_subtitle}"
+        return normalized_title or normalized_subtitle
 
     def _play_sequence(
         self, clips: tuple[str, ...], repeat: str | None = None, repeats: int | None = None
@@ -908,6 +930,7 @@ class DesktopPet(QWidget):
         menu = QMenu(self)
         menu.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         settings_action = menu.addAction("設定")
+        open_repo_action = menu.addAction("打開專案 repo")
         swap_panel_action = menu.addAction("工作狀態面板位置對調")
         replay_action = menu.addAction("重新播放開機動畫")
         exit_action = menu.addAction("Exit")
@@ -918,9 +941,25 @@ class DesktopPet(QWidget):
             self.context_menu = None
         if selected_action == settings_action:
             self.open_settings()
+        elif selected_action == open_repo_action:
+            self.open_project_repo()
         elif selected_action == swap_panel_action:
             self.swap_session_panel_side()
         elif selected_action == replay_action:
             self.intro_replay_requested.emit()
         elif selected_action == exit_action:
             QApplication.quit()
+
+    def open_project_repo(self) -> None:
+        code_command = shutil.which("code.cmd") or shutil.which("code")
+        if code_command is None:
+            QMessageBox.warning(self, "無法開啟 VS Code", "找不到 VS Code 的 code 指令。")
+            return
+        try:
+            subprocess.Popen(
+                [code_command, str(PROJECT_ROOT)],
+                cwd=PROJECT_ROOT,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except OSError as error:
+            QMessageBox.warning(self, "無法開啟 VS Code", str(error))

@@ -89,7 +89,7 @@ Windows 上每秒會重新確認桌寵的最上層順序，但不應搶走目前
 
 - `main.py`、`src/desktop_pet/app.py`：程式入口與 Qt 應用程式生命週期。
 - `src/desktop_pet/desktop_pet.py`：桌寵動畫、狀態協調與滑鼠互動。
-- `src/desktop_pet/settings_panel.py`：設定、Hook 測試與 Hook 設定介面。
+- `src/desktop_pet/settings_panel.py`：設定、Hook 測試、Hook 設定、隱藏的 Session 與呼叫紀錄介面。呼叫紀錄由 `DesktopPet.handle_event` 收集，僅保留本次執行最近 200 筆事件，不寫入磁碟。
 - `src/desktop_pet/session_panel.py`：Codex 工作清單。
 - `src/desktop_pet/startup_animation.py`：開場動畫。
 - `src/desktop_pet/hook_bridge.py`、`hook_listener.py`：Codex 事件轉換與 UDP 接收。

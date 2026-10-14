@@ -260,10 +260,10 @@ class ReplyHookTests(unittest.TestCase):
             port = temporary.getsockname()[1]
         with patch.object(bridge, "PORT", port), patch.object(listener_module, "PORT", port):
             listener = HookListener()
-            events: list[tuple[str, str, str, str, str, str]] = []
+            events: list[tuple[str, str, str, str, str, str, str]] = []
             listener.event_received.connect(
-                lambda event, message, session, turn, title, status: events.append(
-                    (event, message, session, turn, title, status)
+                lambda event, message, session, turn, title, status, subtitle: events.append(
+                    (event, message, session, turn, title, status, subtitle)
                 )
             )
             try:
@@ -273,7 +273,7 @@ class ReplyHookTests(unittest.TestCase):
                 listener._receive_pending()
                 self.assertEqual(
                     events,
-                    [("turn.completed", "回覆內容", "session-a", "turn-a", "MyTool", "")],
+                    [("turn.completed", "回覆內容", "session-a", "turn-a", "MyTool", "", "")],
                 )
                 send_event(
                     "turn.completed",
@@ -298,7 +298,7 @@ class ReplyHookTests(unittest.TestCase):
                 listener._receive_pending()
                 self.assertEqual(
                     events[-1],
-                    ("turn.started", "舊版訊息", "legacy-session", "legacy-turn", "", "排程中"),
+                    ("turn.started", "舊版訊息", "legacy-session", "legacy-turn", "", "排程中", ""),
                 )
             finally:
                 listener.close()

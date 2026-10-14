@@ -9,7 +9,7 @@ from desktop_pet.hook_bridge import HOST, PET_EVENTS, PORT
 
 
 class HookListener(QObject):
-    event_received = Signal(str, str, str, str, str, str)
+    event_received = Signal(str, str, str, str, str, str, str)
 
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
@@ -34,6 +34,7 @@ class HookListener(QObject):
                 continue
             event_name = payload.get("event")
             title = payload.get("title", "")
+            subtitle = payload.get("subtitle", "")
             message = payload.get("message", "")
             status = payload.get("status", "")
             session_id = payload.get("session_id", "")
@@ -46,6 +47,7 @@ class HookListener(QObject):
                     turn_id if isinstance(turn_id, str) else "",
                     title if isinstance(title, str) else "",
                     status if isinstance(status, str) else "",
+                    subtitle if isinstance(subtitle, str) else "",
                 )
 
     def close(self) -> None:

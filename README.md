@@ -67,7 +67,7 @@ uv run python install_codex_hooks.py --claude
 例如在工具開始工作時呼叫：
 
 ```cmd
-pet-hook turn.started --title "MyTool" --message "正在產生影片" --status "排程中" --session-id "mytool:project-123" --turn-id "job-456"
+pet-hook turn.started --title "MyTool" --subtitle "專案 123" --message "正在產生影片" --status "排程中" --session-id "mytool:project-123" --turn-id "job-456"
 ```
 
 完成時沿用同一組 ID：
@@ -76,7 +76,7 @@ pet-hook turn.started --title "MyTool" --message "正在產生影片" --status "
 pet-hook turn.completed --message "影片處理完成" --session-id "mytool:project-123" --turn-id "job-456"
 ```
 
-`--title` 與 `--status` 都可省略；只有標題與訊息都有內容時，工作清單才會顯示 `標題 > 訊息`。`--status` 只取代這次事件在工作清單上的預設狀態文字，例如 `思考中` 或 `調用工具中`，不改變動畫；下個事件未提供時會回到該事件的預設文字。每項新工作應使用新的 `turn-id`；同一工作階段可重複使用 `session-id`。工具開始與結束一項子工作時，分別送出 `tool.started` 與 `turn.in_progress`。失敗、取消或結束工作階段時可送出 `turn.failed`、`turn.cancelled` 或 `session.ended`。除 `session.ended` 外，每個事件都要提供兩個 ID。
+`--title`、`--subtitle` 與 `--status` 都可省略。工作清單會顯示 `標題 > 副標題`，標題以粗體呈現；任何事件帶有 `--title` 或 `--subtitle` 都會更新該工作階段的名稱。`turn.started` 未提供 `--subtitle` 時，會改用 `--message` 當副標題；都沒有時只顯示 `Session N`。`--status` 只取代這次事件在工作清單上的預設狀態文字，例如 `思考中` 或 `調用工具中`，不改變動畫；下個事件未提供時會回到該事件的預設文字。每項新工作應使用新的 `turn-id`；同一工作階段可重複使用 `session-id`。工具開始與結束一項子工作時，分別送出 `tool.started` 與 `turn.in_progress`。失敗、取消或結束工作階段時可送出 `turn.failed`、`turn.cancelled` 或 `session.ended`。除 `session.ended` 外，每個事件都要提供兩個 ID。
 
 不想修改 PATH，也可以在專案 Hook 設定中直接使用 `D:\codex_desktop_pet\bin\pet-hook.cmd` 的絕對路徑。桌寵若未啟動，UDP 訊息不會保留待送；指令無法確認桌寵是否已收到。
 
@@ -86,14 +86,16 @@ pet-hook turn.completed --message "影片處理完成" --session-id "mytool:proj
 | --- | --- |
 | 點一下桌寵 | 顯示或收起 Codex 工作清單 |
 | 按住滑鼠左鍵拖曳 | 移動桌寵 |
-| 在桌寵上按右鍵 | 開啟設定、對調工作狀態面板的水平位置、重播開機動畫或結束程式 |
+| 在桌寵上按右鍵 | 開啟設定、在 VS Code 開啟本專案 repo、對調工作狀態面板的水平位置、重播開機動畫或結束程式 |
 | 開場動畫播放時點一下 | 跳過動畫，直接顯示桌寵 |
 
-設定面板包含三個頁面：
+設定面板包含五個頁面：
 
 - **設定**：調整角色大小、動畫速度、工作清單位置與透明度，並決定下次啟動時是否播放開場動畫。
 - **Hook 測試**：不必真的執行 Codex 工作，也能預覽各種狀態與完成回覆。
 - **Hook 設定**：安裝或更新 Codex 或 Claude Code Hook，並可將其他工具使用的共用 CLI 加入使用者 PATH。
+- **隱藏的 Session**：查看及恢復被隱藏的工作階段。
+- **呼叫紀錄**：查看本次啟動後收到的最近 200 筆 Hook 事件；關閉桌寵後會清除。
 
 所有偏好都會自動保存。關閉設定面板不會結束桌寵；若要退出，請從右鍵選單選擇「Exit」，或在設定頁按「停止運行」。
 

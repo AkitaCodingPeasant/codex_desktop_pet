@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -75,11 +76,13 @@ class SettingsPanel(QDialog):
         self.hidden_sessions_button = QPushButton("隱藏的 Session")
         self.hook_button = QPushButton("Hook 測試")
         self.hook_settings_button = QPushButton("Hook 設定")
+        self.call_log_button = QPushButton("呼叫紀錄")
         for button in (
             self.settings_button,
             self.hidden_sessions_button,
             self.hook_button,
             self.hook_settings_button,
+            self.call_log_button,
         ):
             button.setObjectName("navigationButton")
             button.setCheckable(True)
@@ -93,6 +96,7 @@ class SettingsPanel(QDialog):
         self.hook_button.clicked.connect(lambda: self._show_page(1))
         self.hook_settings_button.clicked.connect(lambda: self._show_page(2))
         self.hidden_sessions_button.clicked.connect(lambda: self._show_page(3))
+        self.call_log_button.clicked.connect(lambda: self._show_page(4))
 
         settings_page = QWidget()
         root = QVBoxLayout(settings_page)
@@ -370,6 +374,28 @@ class SettingsPanel(QDialog):
         self.hidden_sessions_scroll.setWidget(self.hidden_sessions_container)
         hidden_layout.addWidget(self.hidden_sessions_scroll, 1)
         self.pages.addWidget(hidden_page)
+
+        call_log_page = QWidget()
+        call_log_layout = QVBoxLayout(call_log_page)
+        call_log_layout.setContentsMargins(28, 26, 28, 24)
+        call_log_layout.setSpacing(16)
+        call_log_eyebrow = QLabel("DESKTOP PET  /  CALL LOG")
+        call_log_eyebrow.setObjectName("eyebrow")
+        call_log_layout.addWidget(call_log_eyebrow)
+        call_log_title = QLabel("呼叫紀錄")
+        call_log_title.setObjectName("title")
+        call_log_layout.addWidget(call_log_title)
+        call_log_hint = QLabel("顯示本次啟動後收到的最近 200 筆 Hook 事件；關閉桌寵後紀錄會清除。")
+        call_log_hint.setObjectName("subtitle")
+        call_log_hint.setWordWrap(True)
+        call_log_layout.addWidget(call_log_hint)
+        self.call_log_view = QPlainTextEdit()
+        self.call_log_view.setObjectName("callLogView")
+        self.call_log_view.setReadOnly(True)
+        self.call_log_view.setPlaceholderText("目前沒有呼叫紀錄。")
+        self.call_log_view.document().setMaximumBlockCount(200)
+        call_log_layout.addWidget(self.call_log_view, 1)
+        self.pages.addWidget(call_log_page)
         self._show_page(0)
 
         self.setStyleSheet("""
@@ -435,6 +461,11 @@ class SettingsPanel(QDialog):
                 border-radius: 9px; padding: 9px;
             }
             QLineEdit:focus { border-color: #6bd8c1; }
+            QPlainTextEdit#callLogView {
+                background: #111c2b; color: #edf4f9;
+                border: 1px solid #365263; border-radius: 9px;
+                padding: 10px; font-size: 12px;
+            }
         """)
         screen = QApplication.primaryScreen()
         if screen is not None:
@@ -449,8 +480,15 @@ class SettingsPanel(QDialog):
         self.hook_button.setChecked(index == 1)
         self.hook_settings_button.setChecked(index == 2)
         self.hidden_sessions_button.setChecked(index == 3)
+        self.call_log_button.setChecked(index == 4)
         if index == 2:
             self._refresh_cli_path_status()
+
+    def set_call_records(self, records: list[str]) -> None:
+        self.call_log_view.setPlainText("\n".join(records))
+
+    def add_call_record(self, record: str) -> None:
+        self.call_log_view.appendPlainText(record)
 
     def _refresh_cli_path_status(self) -> None:
         try:
